@@ -13,6 +13,8 @@ const FRAME_SKIP = 4;
 const ALPHABET_TOLERANCE = 0.18;
 const WORD_TOLERANCE = 0.24;
 const SPARSE_POINTS = [0, 4, 8, 12, 16, 20];
+const LETTER_A_POINTS = [0, 4, 8, 12, 20];
+const LETTER_A_TEMPLATE = [[0, 0], [-0.8, -0.15], [-0.35, -0.42], [0, -0.38], [0.55, -0.25]];
 
 const WORD_LABELS = ["HELLO", "BYE", "YES", "NO", "PLEASE", "SORRY", "HELP", "THANKYOU", "WELCOME1", "EAT1", "DRINK1", "WATER", "MOTHER", "FATHER", "FAMILY", "HOME", "HOUSE", "SCHOOL", "WORK", "FRIEND", "LOVE", "WANT1", "NEED", "COME", "COMEHERE", "GO", "STOP", "FINISH", "GOOD", "BAD", "HAPPY", "SAD", "NOW", "MORE", "NOT", "KNOW", "DONTKNOW", "NOTUNDERSTAND", "GOAHEAD", "GREAT"];
 const ALPHABET_LABELS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y"];
@@ -364,6 +366,11 @@ function extractSparseHand(handLandmarks) {
     return SPARSE_POINTS.map(index => handLandmarks[index] || handLandmarks[0]);
 }
 
+function extractIndexedPoints(handLandmarks, pointIndexes) {
+    if (!handLandmarks?.length) { return null; }
+    return pointIndexes.map(index => handLandmarks[index] || handLandmarks[0]);
+}
+
 function normalizePoints(points) {
     const wrist = points[0];
     const centered = points.map(point => [point.x - wrist.x, point.y - wrist.y]);
@@ -386,6 +393,7 @@ function pairwiseVector(points) {
 }
 
 const TEMPLATE_VECTORS = Object.fromEntries(Object.entries(HAND_TEMPLATES).map(([shape, points]) => [shape, pairwiseVector(points.map(([x, y]) => ({ x, y })))]));
+const LETTER_A_VECTOR = pairwiseVector(LETTER_A_TEMPLATE.map(([x, y]) => ({ x, y })));
 
 function compareVectors(left, right, tolerance) {
     const diff = left.reduce((sum, value, index) => sum + Math.abs(value - right[index]), 0) / left.length;
@@ -474,7 +482,8 @@ function scoreLetterAForHand(results, handLandmarks) {
     const thumbVertical = Math.abs((thumbTip.y - indexMcp.y) / handScale);
     const thumbScore = (scoreProximity(thumbHorizontal, 0.58, 0.42) * 0.7) + (scoreProximity(thumbVertical, 0.12, 0.28) * 0.3);
 
-    const fistScore = scoreHandShape(handLandmarks, "fist");
+    const aSparse = extractIndexedPoints(handLandmarks, LETTER_A_POINTS);
+    const fistScore = aSparse ? compareVectors(pairwiseVector(aSparse), LETTER_A_VECTOR, 0.16) : 0;
 
     const bodyFrame = getBodyFrame(results);
     const wristX = (wrist.x - bodyFrame.center.x) / bodyFrame.scale;

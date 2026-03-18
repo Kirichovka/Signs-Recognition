@@ -8,8 +8,8 @@ import {
 
 const HOLD_SECONDS = 1.0;
 const SCORE_THRESHOLD = 0.72;
-const SPARSE_POINTS = [0, 4, 8, 12, 16, 20];
-const FIST_TEMPLATE = [[0, 0], [-0.8, -0.15], [-0.35, -0.42], [0, -0.38], [0.28, -0.32], [0.55, -0.25]];
+const LETTER_A_POINTS = [0, 4, 8, 12, 20];
+const FIST_TEMPLATE = [[0, 0], [-0.8, -0.15], [-0.35, -0.42], [0, -0.38], [0.55, -0.25]];
 
 const gestureScore = document.getElementById("gesture-score");
 const gestureStatus = document.getElementById("gesture-status");
@@ -85,7 +85,7 @@ function extractSparseHand(handLandmarks) {
     if (!handLandmarks?.length) {
         return null;
     }
-    return SPARSE_POINTS.map(index => handLandmarks[index] || handLandmarks[0]);
+    return LETTER_A_POINTS.map(index => handLandmarks[index] || handLandmarks[0]);
 }
 
 function compareVectors(left, right, tolerance) {
@@ -120,7 +120,7 @@ function scoreLetterAForHand(results, handLandmarks) {
     const pinkyTip = handLandmarks[20];
 
     const sparse = extractSparseHand(handLandmarks);
-    const fistScore = sparse ? compareVectors(pairwiseVector(sparse), FIST_VECTOR, 0.18) : 0;
+    const fistScore = sparse ? compareVectors(pairwiseVector(sparse), FIST_VECTOR, 0.16) : 0;
 
     const handScale = Math.max(
         0.02,
