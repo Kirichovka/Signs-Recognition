@@ -75,6 +75,16 @@ def send_telegram_notification(bot_token: str, chat_id: str, message: str) -> No
         response.read()
 
 
+def format_telegram_http_error(error: urllib.error.HTTPError) -> str:
+    body = error.read().decode("utf-8", errors="replace")
+    hint = ""
+    if error.code == 403:
+        hint = " Make sure you pressed Start in the bot chat and that the chat id belongs to that chat or group."
+    elif error.code == 404:
+        hint = " This usually means the Bot API URL is wrong or the token is invalid."
+    return f"Telegram API request failed with {error.code}: {body}{hint}"
+
+
 def resolve_telegram_credentials(args: argparse.Namespace) -> tuple[str, str]:
     bot_token = args.telegram_bot_token or os.environ.get("TELEGRAM_BOT_TOKEN", "")
     chat_id = args.telegram_chat_id or os.environ.get("TELEGRAM_CHAT_ID", "")
@@ -290,7 +300,10 @@ def main() -> int:
                     ),
                 )
             except Exception as notify_error:
-                print(f"Telegram notification failed: {notify_error}")
+                if isinstance(notify_error, urllib.error.HTTPError):
+                    print(f"Telegram notification failed: {format_telegram_http_error(notify_error)}")
+                else:
+                    print(f"Telegram notification failed: {notify_error}")
         raise
 
     print()

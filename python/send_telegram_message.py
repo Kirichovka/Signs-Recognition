@@ -35,6 +35,16 @@ def send_message(bot_token: str, chat_id: str, message: str, parse_mode: str = "
         return json.loads(response.read().decode("utf-8"))
 
 
+def format_telegram_http_error(error: urllib.error.HTTPError) -> str:
+    body = error.read().decode("utf-8", errors="replace")
+    hint = ""
+    if error.code == 403:
+        hint = " Make sure you pressed Start in the bot chat and that the chat id belongs to that chat or group."
+    elif error.code == 404:
+        hint = " This usually means the Bot API URL is wrong or the token is invalid."
+    return f"Telegram API request failed with {error.code}: {body}{hint}"
+
+
 def main() -> int:
     args = parse_args()
     bot_token = args.bot_token or os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -51,8 +61,7 @@ def main() -> int:
     try:
         result = send_message(bot_token, chat_id, args.message, parse_mode=args.parse_mode)
     except urllib.error.HTTPError as error:
-        body = error.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Telegram API request failed with {error.code}: {body}") from error
+        raise RuntimeError(format_telegram_http_error(error)) from error
 
     if not result.get("ok"):
         raise RuntimeError(f"Telegram API returned a failure response: {result}")
