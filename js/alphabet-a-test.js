@@ -8,7 +8,7 @@ import {
 const HOLD_SECONDS = 1.0;
 const SCORE_THRESHOLD = 0.4;
 const LETTER_A_POINTS = [0, 4, 8, 12, 20];
-const FIST_TEMPLATE = [[0, 0], [-0.8, -0.15], [-0.35, -0.42], [0, -0.38], [0.55, -0.25]];
+const BOUND_POSE_KEY = "gesture-trainer.bound-letter-a";
 
 const gestureScore = document.getElementById("gesture-score");
 const gestureStatus = document.getElementById("gesture-status");
@@ -18,6 +18,8 @@ const scoreBreakdown = document.getElementById("score-breakdown");
 const cameraState = document.getElementById("camera-state");
 const retryCameraBtn = document.getElementById("retry-camera-btn");
 const refreshDiagnosticsBtn = document.getElementById("refresh-diagnostics-btn");
+const bindPoseBtn = document.getElementById("bind-pose-btn");
+const resetPoseBtn = document.getElementById("reset-pose-btn");
 const diagnosticsSummary = document.getElementById("diagnostics-summary");
 const diagnosticsList = document.getElementById("diagnostics-list");
 const inputVideo = document.getElementById("input-video");
@@ -33,6 +35,8 @@ let cameraReady = false;
 let trackedHands = 0;
 let lastCameraError = "";
 let latestDebug = null;
+let latestScoredSample = null;
+let boundPose = loadBoundPose();
 
 function drawFivePointTracking(results) {
     outputCanvas.width = inputVideo.videoWidth || 1280;
@@ -99,20 +103,9 @@ function normalizePoints(points) {
     return centered.map(([x, y]) => [x / scale, y / scale]);
 }
 
-function pairwiseVector(points) {
-    const normalized = normalizePoints(points);
-    const values = [];
-    for (let i = 0; i < normalized.length; i += 1) {
-        for (let j = i + 1; j < normalized.length; j += 1) {
-            const dx = normalized[i][0] - normalized[j][0];
-            const dy = normalized[i][1] - normalized[j][1];
-            values.push(Math.hypot(dx, dy));
-        }
-    }
-    return values;
+function flattenPoints(points) {
+    return points.flatMap(([x, y]) => [x, y]);
 }
-
-const FIST_VECTOR = pairwiseVector(FIST_TEMPLATE.map(([x, y]) => ({ x, y })));
 
 function extractSparseHand(handLandmarks) {
     if (!handLandmarks?.length) {
@@ -124,6 +117,25 @@ function extractSparseHand(handLandmarks) {
 function compareVectors(left, right, tolerance) {
     const diff = left.reduce((sum, value, index) => sum + Math.abs(value - right[index]), 0) / left.length;
     return Math.max(0, 1 - diff / tolerance);
+}
+
+function loadBoundPose() {
+    try {
+        const raw = window.localStorage.getItem(BOUND_POSE_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch (_error) {
+        return null;
+    }
+}
+
+function saveBoundPose(sample) {
+    window.localStorage.setItem(BOUND_POSE_KEY, JSON.stringify(sample));
+    boundPose = sample;
+}
+
+function clearBoundPose() {
+    window.localStorage.removeItem(BOUND_POSE_KEY);
+    boundPose = null;
 }
 
 function scoreProximity(actual, target, tolerance) {
@@ -212,13 +224,38 @@ function scoreLetterAForHand(results, handLandmarks) {
     const wristY = (wrist.y - bodyFrame.center.y) / bodyFrame.scale;
     const bodyPositionScore = (scoreProximity(Math.abs(wristX), 0.55, 0.8) * 0.45) + (scoreProximity(wristY, 0.15, 0.7) * 0.55);
 
-    const score = (curledScore * 0.45) + (thumbScore * 0.3) + (bodyPositionScore * 0.25);
+    const sparse = extractSparseHand(handLandmarks);
+    const normalizedSparse = sparse ? normalizePoints(sparse) : null;
+    const flattenedSparse = normalizedSparse ? flattenPoints(normalizedSparse) : null;
+    const fingerAngles = fingerCurl.flatMap(item => [item.pipAngle, item.dipAngle]);
+
+    let templateScore = 0;
+    if (boundPose && flattenedSparse) {
+        const pointScore = compareVectors(flattenedSparse, boundPose.flattenedSparse, 0.6);
+        const angleScore = compareVectors(fingerAngles, boundPose.fingerAngles, 70);
+        const thumbTemplateScore = (scoreProximity(thumbHorizontal, boundPose.thumbHorizontal, 0.45) * 0.7) + (scoreProximity(thumbVertical, boundPose.thumbVertical, 0.35) * 0.3);
+        const bodyTemplateScore = (scoreProximity(wristX, boundPose.wristX, 0.9) * 0.45) + (scoreProximity(wristY, boundPose.wristY, 0.9) * 0.55);
+        templateScore = (pointScore * 0.35) + (angleScore * 0.3) + (thumbTemplateScore * 0.2) + (bodyTemplateScore * 0.15);
+    }
+
+    const defaultScore = (curledScore * 0.45) + (thumbScore * 0.3) + (bodyPositionScore * 0.25);
+    const score = boundPose ? ((templateScore * 0.7) + (defaultScore * 0.3)) : defaultScore;
     return {
         score,
+        sample: {
+            flattenedSparse,
+            fingerAngles,
+            thumbHorizontal,
+            thumbVertical,
+            wristX,
+            wristY
+        },
         debug: {
             curledScore,
             thumbScore,
             bodyPositionScore,
+            templateScore,
+            usingBoundPose: !!boundPose,
             wristX,
             wristY,
             thumbHorizontal,
@@ -236,6 +273,7 @@ function scoreLetterA(results) {
     const candidates = hands.map(hand => scoreLetterAForHand(results, hand)).sort((left, right) => right.score - left.score);
     return {
         score: candidates[0].score,
+        sample: candidates[0].sample,
         debug: candidates[0].debug,
         handsVisible: hands.length
     };
@@ -248,7 +286,8 @@ function renderBreakdown(debug) {
         : [
             { label: "Finger bend", value: `${Math.round(debug.curledScore * 100)}%`, badge: "Angles" },
             { label: "Thumb placement", value: `${Math.round(debug.thumbScore * 100)}%`, badge: "Thumb" },
-            { label: "Body position", value: `${Math.round(debug.bodyPositionScore * 100)}%`, badge: "Body" }
+            { label: "Body position", value: `${Math.round(debug.bodyPositionScore * 100)}%`, badge: "Body" },
+            { label: "Bound pose", value: debug.usingBoundPose ? `${Math.round(debug.templateScore * 100)}%` : "Not used", badge: debug.usingBoundPose ? "Saved" : "Default" }
         ];
 
     items.forEach(item => {
@@ -281,9 +320,15 @@ function renderDiagnostics(permissionState) {
     if (latestDebug) {
         rows.push({
             label: "Geometry debug",
-            value: `Finger bend ${Math.round(latestDebug.curledScore * 100)}%, thumb ${Math.round(latestDebug.thumbScore * 100)}%, body ${Math.round(latestDebug.bodyPositionScore * 100)}%. Allowed mismatch: 60%.`,
+            value: `Finger bend ${Math.round(latestDebug.curledScore * 100)}%, thumb ${Math.round(latestDebug.thumbScore * 100)}%, body ${Math.round(latestDebug.bodyPositionScore * 100)}%, bound pose ${Math.round((latestDebug.templateScore || 0) * 100)}%. Allowed mismatch: 60%.`,
             badge: "Debug",
             tone: "is-good"
+        });
+        rows.push({
+            label: "Bound pose status",
+            value: latestDebug.usingBoundPose ? "A saved user pose is active for recognition." : "No saved user pose. Default geometry only.",
+            badge: latestDebug.usingBoundPose ? "Active" : "Default",
+            tone: latestDebug.usingBoundPose ? "is-good" : "is-neutral"
         });
     }
 
@@ -313,6 +358,7 @@ function stopLoop() {
 
 function handleScoredFrame(result) {
     latestDebug = result.debug;
+    latestScoredSample = result.sample;
     trackedHands = result.handsVisible;
     renderBreakdown(result.debug);
 
@@ -340,6 +386,24 @@ function handleScoredFrame(result) {
 
     renderStatus(result.score, holdProgress, statusText);
     collectDiagnostics().catch(console.error);
+}
+
+function bindCurrentPose() {
+    if (!latestScoredSample?.flattenedSparse) {
+        renderStatus(0, 0, "Show the A handshape first, then bind the current pose.");
+        return;
+    }
+    saveBoundPose(latestScoredSample);
+    renderStatus(Math.max(Number(gestureScore.textContent.replace("%", "")) / 100 || 0, 0), 0, "Current A pose saved. Future checks will use it.");
+    collectDiagnostics("Bound pose saved for the letter A.").catch(console.error);
+    renderBreakdown(latestDebug);
+}
+
+function resetBoundPose() {
+    clearBoundPose();
+    renderStatus(0, 0, "Saved A pose cleared. Using default geometry again.");
+    collectDiagnostics("Bound pose cleared. Using default geometry only.").catch(console.error);
+    renderBreakdown(latestDebug);
 }
 
 function onHolisticResults(results) {
@@ -393,6 +457,8 @@ async function startCamera() {
 
 retryCameraBtn.addEventListener("click", () => startCamera().catch(console.error));
 refreshDiagnosticsBtn.addEventListener("click", () => collectDiagnostics().catch(console.error));
+bindPoseBtn.addEventListener("click", bindCurrentPose);
+resetPoseBtn.addEventListener("click", resetBoundPose);
 window.addEventListener("beforeunload", () => stopLoop());
 
 renderBreakdown(null);
