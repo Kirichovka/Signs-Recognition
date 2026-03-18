@@ -7,7 +7,7 @@ import {
 } from "./sign-model-runtime.js?v=20260318-9";
 
 const HOLD_SECONDS = 1.0;
-const SCORE_THRESHOLD = 0.72;
+const SCORE_THRESHOLD = 0.7;
 const LETTER_A_POINTS = [0, 4, 8, 12, 20];
 const FIST_TEMPLATE = [[0, 0], [-0.8, -0.15], [-0.35, -0.42], [0, -0.38], [0.55, -0.25]];
 
@@ -152,9 +152,6 @@ function scoreLetterAForHand(results, handLandmarks) {
     const pinkyDip = handLandmarks[19];
     const pinkyTip = handLandmarks[20];
 
-    const sparse = extractSparseHand(handLandmarks);
-    const fistScore = sparse ? compareVectors(pairwiseVector(sparse), FIST_VECTOR, 0.16) : 0;
-
     const handScale = Math.max(
         0.02,
         average([
@@ -182,11 +179,10 @@ function scoreLetterAForHand(results, handLandmarks) {
     const wristY = (wrist.y - bodyFrame.center.y) / bodyFrame.scale;
     const bodyPositionScore = (scoreProximity(Math.abs(wristX), 0.55, 0.8) * 0.45) + (scoreProximity(wristY, 0.15, 0.7) * 0.55);
 
-    const score = (fistScore * 0.4) + (curledScore * 0.25) + (thumbScore * 0.2) + (bodyPositionScore * 0.15);
+    const score = (curledScore * 0.45) + (thumbScore * 0.3) + (bodyPositionScore * 0.25);
     return {
         score,
         debug: {
-            fistScore,
             curledScore,
             thumbScore,
             bodyPositionScore,
@@ -217,7 +213,6 @@ function renderBreakdown(debug) {
     const items = !debug
         ? [{ label: "Waiting", value: "No score yet.", badge: "Idle" }]
         : [
-            { label: "Fist shape", value: `${Math.round(debug.fistScore * 100)}%`, badge: "Shape" },
             { label: "Finger bend", value: `${Math.round(debug.curledScore * 100)}%`, badge: "Angles" },
             { label: "Thumb placement", value: `${Math.round(debug.thumbScore * 100)}%`, badge: "Thumb" },
             { label: "Body position", value: `${Math.round(debug.bodyPositionScore * 100)}%`, badge: "Body" }
@@ -253,7 +248,7 @@ function renderDiagnostics(permissionState) {
     if (latestDebug) {
         rows.push({
             label: "Geometry debug",
-            value: `Fist ${Math.round(latestDebug.fistScore * 100)}%, finger bend ${Math.round(latestDebug.curledScore * 100)}%, thumb ${Math.round(latestDebug.thumbScore * 100)}%, body ${Math.round(latestDebug.bodyPositionScore * 100)}%.`,
+            value: `Finger bend ${Math.round(latestDebug.curledScore * 100)}%, thumb ${Math.round(latestDebug.thumbScore * 100)}%, body ${Math.round(latestDebug.bodyPositionScore * 100)}%. Allowed mismatch: 30%.`,
             badge: "Debug",
             tone: "is-good"
         });
