@@ -186,3 +186,21 @@ python train_sign_model.py `
   --batch-size 32 `
   --hidden-size 192
 ```
+
+## Localhost model test
+
+After downloading `best_model.pt` to `D:\Integration-Game\AI-models\best_model.pt`, you can run a local browser test page that uses MediaPipe Holistic in the browser and the trained PyTorch model through a local FastAPI server:
+
+```powershell
+cd D:\Integration-Game\gesture-trainer-web\python
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn local_inference_server:app --host 127.0.0.1 --port 8000
+```
+
+Open:
+
+- `http://127.0.0.1:8000/model-test.html`
+
+The page buffers 40 frames of normalized left-hand, right-hand, and pose landmarks, then sends them to the local model and shows the top predictions.

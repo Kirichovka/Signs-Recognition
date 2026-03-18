@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ASL Model Test</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+</head>
+<body>
+    <main class="gesture-page">
+        <section class="gesture-shell">
+            <div class="gesture-hero">
+                <div class="theme-kicker">ASL Citizen Model</div>
+                <h1>Live Sign Recognition Test</h1>
+                <p>Open the camera, keep one signer in frame, and watch the locally hosted model predict the top sign candidates.</p>
+            </div>
+
+            <div class="gesture-layout">
+                <section class="gesture-panel gesture-target-panel">
+                    <div class="gesture-target-header">
+                        <div>
+                            <div class="gesture-label">Model State</div>
+                            <h2 id="model-status-title">Loading local model...</h2>
+                        </div>
+                        <div id="model-health-badge" class="gesture-step">Checking</div>
+                    </div>
+
+                    <div class="gesture-calibration-card">
+                        <div class="gesture-calibration-header">
+                            <div>
+                                <div class="gesture-label">Prediction</div>
+                                <h3 id="top-prediction-label">Waiting for frames</h3>
+                            </div>
+                            <button id="reset-buffer-btn" type="button" class="secondary">Reset Buffer</button>
+                        </div>
+                        <p id="top-prediction-score" class="gesture-calibration-status">Need 40 frames before the first inference.</p>
+                    </div>
+
+                    <div class="gesture-score-grid">
+                        <article class="gesture-score-card">
+                            <div class="gesture-label">Buffered Frames</div>
+                            <div id="buffered-frames" class="gesture-score">0</div>
+                        </article>
+                        <article class="gesture-score-card">
+                            <div class="gesture-label">Last Inference</div>
+                            <div id="last-inference-at" class="gesture-status">Not run yet</div>
+                        </article>
+                    </div>
+
+                    <div class="gesture-checklist-card">
+                        <div class="gesture-label">Top Predictions</div>
+                        <div id="prediction-list" class="gesture-checklist"></div>
+                    </div>
+
+                    <div class="gesture-help-card">
+                        <div class="gesture-label">Tips</div>
+                        <p>Stay centered, keep your upper body visible, and hold the sign for about a second so the 40-frame sequence stays consistent.</p>
+                        <button id="retry-model-btn" type="button" class="secondary gesture-retry-btn">Retry Model Check</button>
+                    </div>
+                </section>
+
+                <section class="gesture-panel gesture-camera-panel">
+                    <div class="gesture-camera-header">
+                        <div>
+                            <div class="gesture-label">Live Camera</div>
+                            <h2>Holistic View</h2>
+                        </div>
+                        <div id="camera-state" class="gesture-camera-state">Starting camera...</div>
+                    </div>
+
+                    <div class="gesture-camera-stage">
+                        <video id="input-video" class="gesture-video" playsinline></video>
+                        <canvas id="output-canvas" class="gesture-canvas"></canvas>
+                    </div>
+
+                    <div class="gesture-diagnostics-card">
+                        <div class="gesture-diagnostics-header">
+                            <div>
+                                <div class="gesture-label">Diagnostics</div>
+                                <h3>Capture Status</h3>
+                            </div>
+                            <button id="retry-camera-btn" type="button" class="secondary">Retry Camera</button>
+                        </div>
+                        <div id="diagnostics-summary" class="gesture-diagnostics-summary">Waiting for the model and camera to become ready.</div>
+                        <div id="diagnostics-list" class="gesture-diagnostics-list"></div>
+                    </div>
+                </section>
+            </div>
+        </section>
+    </main>
+
+    <script type="module" src="./js/model-test.js"></script>
+</body>
+</html>
