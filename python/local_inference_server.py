@@ -77,7 +77,7 @@ model_service = ModelService(DEFAULT_MODEL_PATH)
 
 @app.get("/")
 def root() -> RedirectResponse:
-    return RedirectResponse(url="/model-test.html")
+    return RedirectResponse(url="/index.html")
 
 
 @app.get("/api/health")
@@ -86,6 +86,7 @@ def health() -> dict:
         "status": "ok",
         "model_name": model_service.model_path.name,
         "num_classes": len(model_service.label_names),
+        "label_names": model_service.label_names,
         "sequence_length": model_service.sequence_length,
         "feature_size": model_service.feature_size,
     }

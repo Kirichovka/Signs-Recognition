@@ -1,15 +1,17 @@
-const GESTURES = [
-    { id: "open_palm", title: "Open Palm", badge: "OPEN", instruction: "Open your hand and stretch all fingers.", fingers: { thumb: "open", index: "open", middle: "open", ring: "open", pinky: "open" } },
-    { id: "closed_fist", title: "Closed Fist", badge: "FIST", instruction: "Make a gentle fist.", fingers: { thumb: "closed", index: "closed", middle: "closed", ring: "closed", pinky: "closed" } },
-    { id: "point_up", title: "Point Up", badge: "POINT", instruction: "Lift your index finger and fold the other fingers.", fingers: { thumb: "closed", index: "open", middle: "closed", ring: "closed", pinky: "closed" } },
-    { id: "victory", title: "Victory", badge: "V", instruction: "Open your index and middle fingers.", fingers: { thumb: "closed", index: "open", middle: "open", ring: "closed", pinky: "closed" } },
-    { id: "thumbs_up", title: "Thumbs Up", badge: "UP", instruction: "Raise your thumb and keep the other fingers closed.", fingers: { thumb: "open", index: "closed", middle: "closed", ring: "closed", pinky: "closed" } }
-];
-
+const MAX_SEQUENCE = 40;
+const PREDICTION_INTERVAL = 6;
 const HOLD_SECONDS = 1.0;
-const SCORE_THRESHOLD = 0.74;
-const FINGER_NAMES = ["thumb", "index", "middle", "ring", "pinky"];
-const CALIBRATION_SAMPLE_TARGET = 18;
+const SCORE_THRESHOLD = 0.45;
+const POSE_IDS = [0, 11, 12, 13, 14, 15, 16];
+const MODEL_HEALTH_URL = "/api/health";
+const MODEL_PREDICT_URL = "/api/predict";
+const FALLBACK_LABELS = [
+    "AXE1", "BACKPACK1", "BASKETBALL1", "BEE1", "BELIEVE1", "BELT1", "BITE1", "BREAKFAST1", "CALENDAR1", "CANCEL1",
+    "CANCER1", "CHRISTMAS1", "CLOUD1", "CONFUSED1", "DARK1", "DEAF1", "DECIDE1", "DEMAND1", "DINNER1", "DOG1",
+    "DOWNSIZE1", "DRAG1", "EAT1", "EDIT1", "ELEVATOR1", "FINE1", "FOREIGNER1", "GUESS1", "HALLOWEEN1", "HOSPITAL1",
+    "HURDLE/TRIP1", "LETTUCE1", "LOCK1", "LUNCH1", "MECHANIC1", "MICROSCOPE1", "MOVIE1", "NIGHT1", "NOON1", "PARTY1",
+    "PATIENT2", "RECENT1", "RESEARCH1", "RIVER1", "ROCKINGCHAIR1", "SHAVE1", "SPECIAL1", "THIRD1", "TYPE1", "WHATFOR1"
+];
 
 const gestureTitle = document.getElementById("gesture-title");
 const gestureInstruction = document.getElementById("gesture-instruction");
@@ -34,32 +36,56 @@ const diagnosticsList = document.getElementById("diagnostics-list");
 
 const canvasCtx = outputCanvas.getContext("2d");
 
+let gestures = buildGestures(FALLBACK_LABELS);
 let currentGestureIndex = 0;
 let holdStartedAt = 0;
 let lastSuccess = false;
 let activeStream = null;
 let animationFrameId = 0;
-let handsInstance = null;
+let holistic = null;
+let frameBuffer = [];
+let predictionInFlight = false;
+let frameCounter = 0;
 let lastCameraError = "";
 let diagnosticsPollId = 0;
-let detectedHandCount = 0;
+let lastModelInfo = null;
+let lastPredictions = [];
+let cameraReady = false;
+let detectedHands = 0;
 
-const calibrationState = {
-    running: false,
-    samples: [],
-    profile: null
-};
+function buildGestures(labels) {
+    return labels.map(label => {
+        const title = prettifyLabel(label);
+        const badgeBase = label.replace(/[0-9]+$/g, "").split(/[\/_]/)[0] || label;
+        return {
+            id: label,
+            title,
+            badge: badgeBase.slice(0, 8).toUpperCase(),
+            instruction: `Show the sign for "${title}" and hold it steady until the progress bar fills.`
+        };
+    });
+}
+
+function prettifyLabel(label) {
+    return label
+        .replace(/[0-9]+$/g, "")
+        .split(/[_/]/)
+        .filter(Boolean)
+        .map(chunk => chunk.charAt(0) + chunk.slice(1).toLowerCase())
+        .join(" / ");
+}
 
 function getCurrentGesture() {
-    return GESTURES[currentGestureIndex];
+    return gestures[currentGestureIndex] || gestures[0];
 }
 
 function setGesture(index) {
-    currentGestureIndex = (index + GESTURES.length) % GESTURES.length;
+    currentGestureIndex = (index + gestures.length) % gestures.length;
     holdStartedAt = 0;
     lastSuccess = false;
     renderGestureCard();
-    renderEvaluation(null, 0, "Show one or two hands to the camera.");
+    renderPredictions(lastPredictions);
+    renderStatus(0, 0, "Show the trained sign to the camera.");
 }
 
 function renderGestureCard() {
@@ -67,48 +93,42 @@ function renderGestureCard() {
     gestureTitle.textContent = gesture.title;
     gestureInstruction.textContent = gesture.instruction;
     gestureEmoji.textContent = gesture.badge;
-    gestureStep.textContent = `${currentGestureIndex + 1} / ${GESTURES.length}`;
+    gestureStep.textContent = `${currentGestureIndex + 1} / ${gestures.length}`;
 }
 
-function renderChecklist(result) {
-    fingerChecklist.innerHTML = "";
-    for (const fingerName of FINGER_NAMES) {
-        const row = document.createElement("div");
-        row.className = "gesture-check-row";
-        const label = document.createElement("span");
-        label.textContent = fingerName[0].toUpperCase() + fingerName.slice(1);
-        const value = document.createElement("span");
-        if (!result) {
-            value.textContent = "Waiting";
-            value.className = "gesture-check-badge is-neutral";
-        } else {
-            const observed = result.observed[fingerName];
-            const expected = result.expected[fingerName];
-            value.textContent = `${observed} / ${expected}`;
-            value.className = `gesture-check-badge ${result.matches[fingerName] ? "is-good" : "is-bad"}`;
-        }
-        row.append(label, value);
-        fingerChecklist.appendChild(row);
-    }
-}
-
-function renderEvaluation(result, holdProgress, statusText) {
-    const scoreValue = result ? Math.round(result.score * 100) : 0;
+function renderStatus(score, holdProgress, statusText) {
+    const scoreValue = Math.round(score * 100);
     gestureScore.textContent = `${scoreValue}%`;
     gestureStatus.textContent = statusText;
     holdProgressBar.style.width = `${Math.round(holdProgress * 100)}%`;
     holdProgressValue.textContent = `${Math.round(holdProgress * 100)}%`;
-    gestureScore.classList.toggle("is-strong", scoreValue >= 80);
-    renderChecklist(result);
+    gestureScore.classList.toggle("is-strong", scoreValue >= 70);
 }
 
-function renderCalibrationStatus(text) {
-    calibrationStatus.textContent = text;
-}
+function renderPredictions(predictions) {
+    fingerChecklist.innerHTML = "";
+    if (!predictions.length) {
+        const empty = document.createElement("div");
+        empty.className = "gesture-check-row";
+        empty.innerHTML = '<span>Waiting</span><span class="gesture-check-badge is-neutral">No predictions yet</span>';
+        fingerChecklist.appendChild(empty);
+        return;
+    }
 
-function syncCalibrationButton() {
-    calibrateBtn.textContent = calibrationState.running ? "Cancel" : "Calibrate";
-    calibrateBtn.classList.toggle("secondary", calibrationState.running);
+    const targetId = getCurrentGesture().id;
+    predictions.forEach((item, index) => {
+        const row = document.createElement("div");
+        row.className = "gesture-check-row";
+        const label = document.createElement("span");
+        label.textContent = `${index + 1}. ${prettifyLabel(item.label)}`;
+        const value = document.createElement("span");
+        value.textContent = `${Math.round(item.score * 100)}%`;
+        const isTarget = item.label === targetId;
+        const isTop = index === 0;
+        value.className = `gesture-check-badge ${isTarget ? "is-good" : isTop ? "is-neutral" : "is-neutral"}`;
+        row.append(label, value);
+        fingerChecklist.appendChild(row);
+    });
 }
 
 function setDiagnosticsSummary(text) {
@@ -118,7 +138,7 @@ function setDiagnosticsSummary(text) {
 function formatPermissionState(state) {
     if (state === "granted") { return "Allowed"; }
     if (state === "denied") { return "Blocked"; }
-    if (state === "prompt") { return "Waiting for browser permission"; }
+    if (state === "prompt") { return "Waiting"; }
     return "Unavailable";
 }
 
@@ -144,190 +164,106 @@ function renderDiagnosticsRows(rows) {
     }
 }
 
-function distance(a, b) {
-    return Math.hypot(a.x - b.x, a.y - b.y);
+function emptyHand() {
+    return Array.from({ length: 21 }, () => ({ x: 0, y: 0, z: 0 }));
 }
 
-function angleBetween(a, b, c) {
-    const abx = a.x - b.x;
-    const aby = a.y - b.y;
-    const cbx = c.x - b.x;
-    const cby = c.y - b.y;
-    const dot = abx * cbx + aby * cby;
-    const magAb = Math.hypot(abx, aby);
-    const magCb = Math.hypot(cbx, cby);
-    if (!magAb || !magCb) {
-        return 180;
+function emptyPose() {
+    return Array.from({ length: POSE_IDS.length }, () => ({ x: 0, y: 0, z: 0, visibility: 0 }));
+}
+
+function toLandmarkArray(landmarks, count) {
+    if (!landmarks?.length) {
+        return Array.from({ length: count }, () => ({ x: 0, y: 0, z: 0 }));
     }
-    const cosine = Math.max(-1, Math.min(1, dot / (magAb * magCb)));
-    return Math.acos(cosine) * (180 / Math.PI);
+    return Array.from({ length: count }, (_, index) => landmarks[index] || { x: 0, y: 0, z: 0 });
 }
 
-function getFingerMap() {
-    return {
-        thumb: [1, 2, 3, 4],
-        index: [5, 6, 7, 8],
-        middle: [9, 10, 11, 12],
-        ring: [13, 14, 15, 16],
-        pinky: [17, 18, 19, 20]
-    };
-}
-
-function getHandScale(landmarks) {
-    const wrist = landmarks[0];
-    const middleMcp = landmarks[9];
-    const indexMcp = landmarks[5];
-    const pinkyMcp = landmarks[17];
-    return (distance(wrist, middleMcp) + distance(indexMcp, pinkyMcp)) / 2;
-}
-
-function getFingerMetrics(landmarks, handednessLabel) {
-    const wrist = landmarks[0];
-    const fingerMap = getFingerMap();
-    const metrics = {};
-    for (const [fingerName, [mcp, pip, dip, tip]] of Object.entries(fingerMap)) {
-        const pipAngle = angleBetween(landmarks[mcp], landmarks[pip], landmarks[dip]);
-        const dipAngle = angleBetween(landmarks[pip], landmarks[dip], landmarks[tip]);
-        const tipToWrist = distance(landmarks[tip], wrist);
-        const pipToWrist = distance(landmarks[pip], wrist);
-        const ratio = pipToWrist ? tipToWrist / pipToWrist : 1;
-        const thumbDirection = handednessLabel === "Right"
-            ? landmarks[tip].x < landmarks[3].x && landmarks[tip].x < landmarks[mcp].x
-            : landmarks[tip].x > landmarks[3].x && landmarks[tip].x > landmarks[mcp].x;
-        metrics[fingerName] = {
-            pipAngle,
-            dipAngle,
-            tipToWrist,
-            pipToWrist,
-            ratio,
-            thumbDirection
-        };
+function toPoseSubset(landmarks) {
+    if (!landmarks?.length) {
+        return emptyPose();
     }
-    return metrics;
+    return POSE_IDS.map(index => landmarks[index] || { x: 0, y: 0, z: 0, visibility: 0 });
 }
 
-function average(values) {
-    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
-}
+function normalizeLandmarks(leftHand, rightHand, pose) {
+    const leftShoulder = pose[1];
+    const rightShoulder = pose[2];
+    const shoulderVisible = leftShoulder.visibility >= 0.3 && rightShoulder.visibility >= 0.3;
 
-function buildCalibrationProfile(samples) {
-    const fingers = {};
-    for (const fingerName of FINGER_NAMES) {
-        fingers[fingerName] = {
-            ratio: average(samples.map(sample => sample.fingers[fingerName].ratio)),
-            pipAngle: average(samples.map(sample => sample.fingers[fingerName].pipAngle)),
-            dipAngle: average(samples.map(sample => sample.fingers[fingerName].dipAngle))
-        };
-    }
-    return {
-        createdAt: Date.now(),
-        handScale: average(samples.map(sample => sample.handScale)),
-        fingers
-    };
-}
+    let centerX = 0.5;
+    let centerY = 0.5;
+    let scale = 0.15;
 
-function getAdaptiveThresholds(fingerName, currentHandScale) {
-    const profile = calibrationState.profile;
-    const currentScale = currentHandScale || 0.18;
-    const relativeScale = profile?.handScale ? currentScale / profile.handScale : 1;
-    const smallHandBoost = relativeScale < 0.9 ? (0.9 - relativeScale) : 0;
-    if (fingerName === "thumb") {
-        const baseRatio = profile?.fingers.thumb.ratio ?? 1.2;
-        const basePip = profile?.fingers.thumb.pipAngle ?? 160;
-        return {
-            ratio: Math.max(1.02, baseRatio * (0.74 - smallHandBoost * 0.12)),
-            pipAngle: Math.max(130, basePip - 28 - smallHandBoost * 10)
-        };
-    }
-    const baseRatio = profile?.fingers[fingerName].ratio ?? 1.22;
-    const basePip = profile?.fingers[fingerName].pipAngle ?? 172;
-    const baseDip = profile?.fingers[fingerName].dipAngle ?? 166;
-    return {
-        ratio: Math.max(1.04, baseRatio * (0.8 - smallHandBoost * 0.12)),
-        pipAngle: Math.max(138, basePip - 24 - smallHandBoost * 10),
-        dipAngle: Math.max(132, baseDip - 22 - smallHandBoost * 10)
-    };
-}
-
-function detectFingerStates(landmarks, handednessLabel) {
-    const metrics = getFingerMetrics(landmarks, handednessLabel);
-    const currentHandScale = getHandScale(landmarks);
-    const states = {};
-
-    for (const fingerName of FINGER_NAMES) {
-        const fingerMetrics = metrics[fingerName];
-        const thresholds = getAdaptiveThresholds(fingerName, currentHandScale);
-        if (fingerName === "thumb") {
-            const isOpen = fingerMetrics.thumbDirection
-                || fingerMetrics.ratio >= thresholds.ratio
-                || fingerMetrics.pipAngle >= thresholds.pipAngle;
-            states[fingerName] = isOpen ? "open" : "closed";
-            continue;
+    if (shoulderVisible) {
+        centerX = (leftShoulder.x + rightShoulder.x) / 2;
+        centerY = (leftShoulder.y + rightShoulder.y) / 2;
+        scale = Math.hypot(leftShoulder.x - rightShoulder.x, leftShoulder.y - rightShoulder.y);
+    } else {
+        const wrists = [];
+        if (leftHand.some(point => point.x || point.y || point.z)) {
+            wrists.push(leftHand[0]);
         }
-        const straightEnough = fingerMetrics.pipAngle >= thresholds.pipAngle && fingerMetrics.dipAngle >= thresholds.dipAngle;
-        const farEnough = fingerMetrics.ratio >= thresholds.ratio;
-        states[fingerName] = straightEnough && farEnough ? "open" : "closed";
-    }
-
-    return { states, metrics, handScale: currentHandScale };
-}
-
-function evaluateGesture(observed, expected) {
-    let passedChecks = 0;
-    let totalChecks = 0;
-    const matches = {};
-    for (const fingerName of FINGER_NAMES) {
-        const matched = expected[fingerName] === observed[fingerName];
-        matches[fingerName] = matched;
-        totalChecks += 1;
-        if (matched) {
-            passedChecks += 1;
+        if (rightHand.some(point => point.x || point.y || point.z)) {
+            wrists.push(rightHand[0]);
+        }
+        if (wrists.length) {
+            centerX = wrists.reduce((sum, point) => sum + point.x, 0) / wrists.length;
+            centerY = wrists.reduce((sum, point) => sum + point.y, 0) / wrists.length;
         }
     }
-    return {
-        score: totalChecks ? passedChecks / totalChecks : 0,
-        matches,
-        expected,
-        observed
-    };
+
+    scale = Math.max(scale, 1e-4);
+
+    const normalize3 = points => points.flatMap(point => [
+        (point.x - centerX) / scale,
+        (point.y - centerY) / scale,
+        point.z / scale
+    ]);
+
+    const normalizePose = points => points.flatMap(point => [
+        (point.x - centerX) / scale,
+        (point.y - centerY) / scale,
+        point.z / scale,
+        point.visibility || 0
+    ]);
+
+    return [
+        ...normalize3(leftHand),
+        ...normalize3(rightHand),
+        ...normalizePose(pose)
+    ];
 }
 
-function getBestHandEvaluation(results) {
-    if (!results.multiHandLandmarks?.length || !results.multiHandedness?.length) {
-        return null;
+function appendFrame(results) {
+    const leftHand = toLandmarkArray(results.leftHandLandmarks, 21);
+    const rightHand = toLandmarkArray(results.rightHandLandmarks, 21);
+    const pose = toPoseSubset(results.poseLandmarks);
+    const featureVector = normalizeLandmarks(leftHand, rightHand, pose);
+    frameBuffer.push(featureVector);
+    if (frameBuffer.length > MAX_SEQUENCE) {
+        frameBuffer.shift();
     }
-
-    const gesture = getCurrentGesture();
-    const evaluations = results.multiHandLandmarks.map((landmarks, index) => {
-        const handedness = results.multiHandedness[index]?.label || "Unknown";
-        const detection = detectFingerStates(landmarks, handedness);
-        const evaluation = evaluateGesture(detection.states, gesture.fingers);
-        return {
-            evaluation,
-            handedness,
-            metrics: detection.metrics,
-            handScale: detection.handScale
-        };
-    });
-
-    return evaluations.sort((a, b) => b.evaluation.score - a.evaluation.score)[0] || null;
 }
 
 function drawResults(results) {
+    outputCanvas.width = inputVideo.videoWidth || 1280;
+    outputCanvas.height = inputVideo.videoHeight || 720;
     canvasCtx.save();
     canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
     canvasCtx.translate(outputCanvas.width, 0);
     canvasCtx.scale(-1, 1);
     canvasCtx.drawImage(results.image, 0, 0, outputCanvas.width, outputCanvas.height);
-    if (results.multiHandLandmarks) {
-        results.multiHandLandmarks.forEach((landmarks, index) => {
-            const handedness = results.multiHandedness?.[index]?.label;
-            const strokeColor = handedness === "Left" ? "#f97316" : "#38bdf8";
-            const fillColor = handedness === "Left" ? "#7c2d12" : "#1d4ed8";
-            window.drawConnectors(canvasCtx, landmarks, window.HAND_CONNECTIONS, { color: strokeColor, lineWidth: 4 });
-            window.drawLandmarks(canvasCtx, landmarks, { color: "#eff6ff", fillColor, radius: 4 });
-        });
-    }
+
+    const drawLandmarkSet = (landmarks, connections, connectorColor, fillColor) => {
+        if (!landmarks) { return; }
+        window.drawConnectors(canvasCtx, landmarks, connections, { color: connectorColor, lineWidth: 3 });
+        window.drawLandmarks(canvasCtx, landmarks, { color: "#eff6ff", fillColor, radius: 3 });
+    };
+
+    drawLandmarkSet(results.poseLandmarks, window.POSE_CONNECTIONS, "#fb7185", "#be123c");
+    drawLandmarkSet(results.leftHandLandmarks, window.HAND_CONNECTIONS, "#f97316", "#7c2d12");
+    drawLandmarkSet(results.rightHandLandmarks, window.HAND_CONNECTIONS, "#38bdf8", "#1d4ed8");
     canvasCtx.restore();
 }
 
@@ -337,11 +273,10 @@ function stopCameraStream() {
         animationFrameId = 0;
     }
     if (activeStream) {
-        for (const track of activeStream.getTracks()) {
-            track.stop();
-        }
+        activeStream.getTracks().forEach(track => track.stop());
         activeStream = null;
     }
+    cameraReady = false;
 }
 
 function describeCameraError(error) {
@@ -353,42 +288,6 @@ function describeCameraError(error) {
     return `Camera error: ${error.message || error.name}`;
 }
 
-function processCalibrationFrame(results) {
-    if (!calibrationState.running) {
-        return;
-    }
-    if (!results.multiHandLandmarks?.length || !results.multiHandedness?.length) {
-        renderCalibrationStatus("Calibration paused. Show one open palm clearly to the camera.");
-        return;
-    }
-
-    const landmarks = results.multiHandLandmarks[0];
-    const handedness = results.multiHandedness[0]?.label || "Unknown";
-    const detection = detectFingerStates(landmarks, handedness);
-    const openPalmScore = evaluateGesture(detection.states, GESTURES[0].fingers).score;
-
-    if (openPalmScore < 0.8) {
-        renderCalibrationStatus("Calibration needs an open palm. Stretch your fingers and hold steady.");
-        return;
-    }
-
-    calibrationState.samples.push({
-        handScale: detection.handScale,
-        fingers: detection.metrics
-    });
-
-    if (calibrationState.samples.length >= CALIBRATION_SAMPLE_TARGET) {
-        calibrationState.profile = buildCalibrationProfile(calibrationState.samples);
-        calibrationState.running = false;
-        syncCalibrationButton();
-        renderCalibrationStatus(`Calibrated from ${CALIBRATION_SAMPLE_TARGET} live samples. Detection is now tuned for your hand size and distance.`);
-        collectDiagnostics().catch(console.error);
-        return;
-    }
-
-    renderCalibrationStatus(`Calibrating open palm: ${calibrationState.samples.length} / ${CALIBRATION_SAMPLE_TARGET} samples collected.`);
-}
-
 async function getCameraPermissionState() {
     if (!navigator.permissions?.query) {
         return "unsupported";
@@ -396,7 +295,7 @@ async function getCameraPermissionState() {
     try {
         const result = await navigator.permissions.query({ name: "camera" });
         return result.state || "unsupported";
-    } catch (error) {
+    } catch (_error) {
         return "unsupported";
     }
 }
@@ -420,21 +319,30 @@ async function collectDiagnostics() {
     const activeVideoTrack = activeStream?.getVideoTracks?.()[0] || null;
     const streamActive = !!activeVideoTrack && activeVideoTrack.readyState === "live";
     const selectedLabel = activeVideoTrack?.label || videoDevices[0]?.label || "Not available yet";
-    const videoReady = inputVideo.readyState >= 2;
-    const hasDimensions = inputVideo.videoWidth > 0 && inputVideo.videoHeight > 0;
-
     const summaryText =
+        !lastModelInfo ? "The page is waiting for the localhost model API." :
         !support ? "This browser does not support camera access on this page." :
         !secureContext ? "Camera access may fail because the page is not in a secure context." :
         permissionState === "denied" ? "Browser permission is blocking the camera for this page." :
         !videoDevices.length ? "No camera devices were detected by the browser." :
-        streamActive ? "Camera stream is active and the page can read frames." :
+        streamActive ? "Camera stream is active and the trained sign model is ready." :
         lastCameraError ? `Camera start failed: ${lastCameraError}` :
-        "The page can see camera support, but an active stream has not started yet.";
+        "The model is ready, but the page is still waiting for a live camera stream.";
 
     setDiagnosticsSummary(summaryText);
-
     renderDiagnosticsRows([
+        {
+            label: "Model API",
+            value: lastModelInfo ? `Loaded ${lastModelInfo.num_classes} trained classes from ${lastModelInfo.model_name}.` : "The localhost model API has not replied yet.",
+            badge: lastModelInfo ? "Ready" : "Offline",
+            tone: lastModelInfo ? "is-good" : "is-bad"
+        },
+        {
+            label: "Trained labels",
+            value: gestures.length ? `${gestures.length} signs available for practice.` : "No trained labels loaded yet.",
+            badge: `${gestures.length}`,
+            tone: gestures.length ? "is-good" : "is-neutral"
+        },
         {
             label: "Browser camera API",
             value: support ? "navigator.mediaDevices.getUserMedia is available." : "getUserMedia is missing in this browser.",
@@ -442,14 +350,8 @@ async function collectDiagnostics() {
             tone: support ? "is-good" : "is-bad"
         },
         {
-            label: "Secure context",
-            value: secureContext ? "The page is running in a secure context, which is required for camera access." : `Current origin: ${window.location.origin}`,
-            badge: secureContext ? "Secure" : "Not secure",
-            tone: secureContext ? "is-good" : "is-bad"
-        },
-        {
             label: "Browser permission",
-            value: permissionState === "unsupported" ? "Permissions API is unavailable here, so check the browser site settings manually." : `Camera permission state: ${formatPermissionState(permissionState)}.`,
+            value: permissionState === "unsupported" ? "Permissions API is unavailable here, so check site settings manually." : `Camera permission state: ${formatPermissionState(permissionState)}.`,
             badge: formatPermissionState(permissionState),
             tone: permissionState === "granted" ? "is-good" : permissionState === "denied" ? "is-bad" : "is-neutral"
         },
@@ -460,60 +362,153 @@ async function collectDiagnostics() {
             tone: videoDevices.length ? "is-good" : "is-bad"
         },
         {
-            label: "Tracked hands",
-            value: detectedHandCount ? `MediaPipe is currently tracking ${detectedHandCount} hand(s). Two hands are enabled.` : "No hands are currently visible in the frame.",
-            badge: `${detectedHandCount} live`,
-            tone: detectedHandCount ? "is-good" : "is-neutral"
-        },
-        {
-            label: "Calibration profile",
-            value: calibrationState.profile ? "Adaptive thresholds are using your saved live hand measurements." : calibrationState.running ? "Calibration is collecting live open-palm samples." : "No saved calibration yet. Detection uses adaptive defaults.",
-            badge: calibrationState.profile ? "Ready" : calibrationState.running ? "Running" : "Default",
-            tone: calibrationState.profile ? "is-good" : "is-neutral"
-        },
-        {
             label: "Active stream",
             value: streamActive ? `Streaming from: ${selectedLabel}` : lastCameraError || "No live video track yet.",
             badge: streamActive ? "Live" : "Idle",
             tone: streamActive ? "is-good" : "is-neutral"
         },
         {
-            label: "Video frame state",
-            value: `readyState=${inputVideo.readyState}, size=${inputVideo.videoWidth || 0}x${inputVideo.videoHeight || 0}, canvas=${outputCanvas.width || 0}x${outputCanvas.height || 0}`,
-            badge: videoReady && hasDimensions ? "Frames ready" : "Waiting",
-            tone: videoReady && hasDimensions ? "is-good" : "is-neutral"
+            label: "Tracked signer",
+            value: detectedHands ? `Hands detected: ${detectedHands}. Keep one signer centered with upper body visible.` : "No hands are currently visible in the frame.",
+            badge: `${detectedHands} hands`,
+            tone: detectedHands ? "is-good" : "is-neutral"
+        },
+        {
+            label: "Frame buffer",
+            value: `${frameBuffer.length} / ${MAX_SEQUENCE} frames buffered for the next inference window.`,
+            badge: `${frameBuffer.length}`,
+            tone: frameBuffer.length >= MAX_SEQUENCE ? "is-good" : "is-neutral"
         },
         {
             label: "Last camera error",
             value: lastCameraError || "No camera error has been recorded in this session.",
             badge: lastCameraError ? "Has error" : "Clear",
             tone: lastCameraError ? "is-bad" : "is-good"
-        },
-        {
-            label: "Page address",
-            value: `${window.location.href}`,
-            badge: window.location.protocol === "https:" || window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost" ? "Allowed origin" : "Check origin",
-            tone: window.location.protocol === "https:" || window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost" ? "is-good" : "is-neutral"
         }
     ]);
 }
 
-function processVideoFrame() {
-    if (!handsInstance || !activeStream || inputVideo.readyState < 2) {
-        animationFrameId = requestAnimationFrame(processVideoFrame);
+function evaluatePredictionWindow(predictions) {
+    const target = getCurrentGesture();
+    const top = predictions[0] || null;
+    const targetPrediction = predictions.find(item => item.label === target.id) || null;
+    const targetScore = targetPrediction?.score || 0;
+
+    let holdProgress = 0;
+    let stableSuccess = false;
+    let statusText = "Hold the target sign steady so the model can see a full 40-frame sequence.";
+
+    if (top && top.label === target.id && top.score >= SCORE_THRESHOLD) {
+        if (!holdStartedAt) {
+            holdStartedAt = performance.now();
+        }
+        const elapsed = (performance.now() - holdStartedAt) / 1000;
+        holdProgress = Math.min(1, elapsed / HOLD_SECONDS);
+        stableSuccess = elapsed >= HOLD_SECONDS;
+        statusText = stableSuccess
+            ? `Matched ${target.title}. Moving to the next trained sign.`
+            : `Matched ${target.title}. Keep holding it a little longer.`;
+    } else if (top) {
+        holdStartedAt = 0;
+        statusText = `Top guess is ${prettifyLabel(top.label)} at ${Math.round(top.score * 100)}%. Adjust toward ${target.title}.`;
+    } else {
+        holdStartedAt = 0;
+    }
+
+    if (stableSuccess && !lastSuccess) {
+        renderStatus(targetScore, 1, `Great job. ${target.title} was recognized.`);
+        lastSuccess = true;
+        window.setTimeout(() => setGesture(currentGestureIndex + 1), 450);
         return;
     }
-    handsInstance.send({ image: inputVideo }).finally(() => {
-        animationFrameId = requestAnimationFrame(processVideoFrame);
-    });
+
+    lastSuccess = stableSuccess;
+    renderStatus(targetScore, holdProgress, statusText);
+}
+
+async function predictSequence() {
+    if (predictionInFlight || frameBuffer.length < MAX_SEQUENCE || !lastModelInfo) {
+        return;
+    }
+    predictionInFlight = true;
+    try {
+        const response = await fetch(MODEL_PREDICT_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sequence: frameBuffer })
+        });
+        if (!response.ok) {
+            throw new Error(`Prediction failed with status ${response.status}`);
+        }
+        const result = await response.json();
+        lastPredictions = result.predictions || [];
+        renderPredictions(lastPredictions);
+        evaluatePredictionWindow(lastPredictions);
+    } catch (error) {
+        console.error(error);
+        renderStatus(0, 0, `Prediction failed: ${error.message}`);
+    } finally {
+        predictionInFlight = false;
+        collectDiagnostics().catch(console.error);
+    }
+}
+
+async function checkModel() {
+    calibrationStatus.textContent = "Checking localhost model API...";
+    calibrateBtn.textContent = "Retry API";
+    try {
+        const response = await fetch(MODEL_HEALTH_URL);
+        if (!response.ok) {
+            throw new Error(`Health check failed with status ${response.status}`);
+        }
+        lastModelInfo = await response.json();
+        const labels = lastModelInfo.label_names?.length ? lastModelInfo.label_names : FALLBACK_LABELS;
+        gestures = buildGestures(labels);
+        currentGestureIndex = Math.min(currentGestureIndex, gestures.length - 1);
+        renderGestureCard();
+        calibrationStatus.textContent = `Model API ready. Loaded ${gestures.length} trained signs from ${lastModelInfo.model_name}.`;
+    } catch (error) {
+        console.error(error);
+        lastModelInfo = null;
+        calibrationStatus.textContent = `Model API unavailable: ${error.message}`;
+    }
+    await collectDiagnostics();
+}
+
+function drawAndQueue(results) {
+    drawResults(results);
+    appendFrame(results);
+    detectedHands = [results.leftHandLandmarks, results.rightHandLandmarks].filter(Boolean).length;
+    frameCounter += 1;
+    cameraReady = true;
+    cameraState.textContent = "Camera is live";
+    if (frameCounter % PREDICTION_INTERVAL === 0) {
+        predictSequence().catch(console.error);
+    }
+}
+
+function startFrameLoop() {
+    const processFrame = async () => {
+        if (!activeStream || inputVideo.readyState < 2) {
+            animationFrameId = requestAnimationFrame(processFrame);
+            return;
+        }
+        try {
+            await holistic.send({ image: inputVideo });
+        } finally {
+            animationFrameId = requestAnimationFrame(processFrame);
+        }
+    };
+    animationFrameId = requestAnimationFrame(processFrame);
 }
 
 async function startCamera() {
     stopCameraStream();
     lastCameraError = "";
     cameraState.textContent = "Starting camera...";
-    gestureStatus.textContent = "Waiting for camera access.";
+    renderStatus(0, 0, "Waiting for camera access.");
     await collectDiagnostics();
+
     let videoDevices = [];
     if (navigator.mediaDevices?.enumerateDevices) {
         try {
@@ -573,108 +568,45 @@ async function startCamera() {
         }
         inputVideo.srcObject = activeStream;
         await inputVideo.play();
-        cameraState.textContent = "Camera is live";
-        gestureStatus.textContent = "Show one or two hands to the camera.";
-        await collectDiagnostics();
-        processVideoFrame();
+        startFrameLoop();
     } catch (error) {
         console.error(error);
         lastCameraError = describeCameraError(error);
         stopCameraStream();
         cameraState.textContent = "Camera access failed";
-        gestureStatus.textContent = lastCameraError;
-        await collectDiagnostics();
+        renderStatus(0, 0, lastCameraError);
     }
-}
-
-function beginCalibration() {
-    if (calibrationState.running) {
-        calibrationState.running = false;
-        calibrationState.samples = [];
-        syncCalibrationButton();
-        renderCalibrationStatus("Calibration canceled. You can start again whenever your hand is centered.");
-        collectDiagnostics().catch(console.error);
-        return;
-    }
-    calibrationState.running = true;
-    calibrationState.samples = [];
-    syncCalibrationButton();
-    renderCalibrationStatus("Calibration started. Show one open palm close to your normal play distance and hold still.");
+    await collectDiagnostics();
 }
 
 async function initTrainer() {
     renderGestureCard();
-    renderEvaluation(null, 0, "Show one or two hands to the camera.");
-    renderCalibrationStatus("Not calibrated yet. Show an open palm and press Calibrate.");
-    syncCalibrationButton();
-    setDiagnosticsSummary("Checking camera environment...");
+    renderPredictions([]);
+    renderStatus(0, 0, "Show the trained sign to the camera.");
+    calibrateBtn.textContent = "Retry API";
+    setDiagnosticsSummary("Checking model and camera environment...");
 
-    handsInstance = new window.Hands({
-        locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    holistic = new window.Holistic({
+        locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
     });
-
-    handsInstance.setOptions({
-        maxNumHands: 2,
+    holistic.setOptions({
         modelComplexity: 1,
+        smoothLandmarks: true,
         minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.45
+        minTrackingConfidence: 0.5
     });
-
-    handsInstance.onResults(results => {
-        outputCanvas.width = results.image.width;
-        outputCanvas.height = results.image.height;
-        detectedHandCount = results.multiHandLandmarks?.length || 0;
-        drawResults(results);
-        processCalibrationFrame(results);
-
-        let statusText = detectedHandCount ? `Tracking ${detectedHandCount} hand(s).` : "Show one or two hands to the camera.";
-        let holdProgress = 0;
-        let evaluation = null;
-        let stableSuccess = false;
-
-        const bestHand = getBestHandEvaluation(results);
-
-        if (bestHand) {
-            evaluation = bestHand.evaluation;
-            if (evaluation.score >= SCORE_THRESHOLD) {
-                if (!holdStartedAt) {
-                    holdStartedAt = performance.now();
-                }
-                const elapsed = (performance.now() - holdStartedAt) / 1000;
-                holdProgress = Math.min(1, elapsed / HOLD_SECONDS);
-                stableSuccess = elapsed >= HOLD_SECONDS;
-                statusText = stableSuccess
-                    ? `Great job! ${bestHand.handedness} hand matched.`
-                    : `Best match: ${bestHand.handedness} hand. Hold the pose a little longer.`;
-            } else {
-                holdStartedAt = 0;
-                statusText = detectedHandCount > 1
-                    ? "Two hands detected. Adjust either hand to match the target sign."
-                    : "Adjust your fingers to match the target sign.";
-            }
-        } else {
-            holdStartedAt = 0;
-        }
-
-        if (stableSuccess && !lastSuccess) {
-            setGesture(currentGestureIndex + 1);
-            statusText = "Great job! Moving to the next sign.";
-            holdProgress = 1;
-        }
-
-        lastSuccess = stableSuccess;
-        renderEvaluation(evaluation, holdProgress, statusText);
-    });
+    holistic.onResults(drawAndQueue);
 
     if (!navigator.mediaDevices?.getUserMedia) {
         lastCameraError = "This browser does not support getUserMedia on this page.";
         cameraState.textContent = "Camera not supported";
-        gestureStatus.textContent = lastCameraError;
+        renderStatus(0, 0, lastCameraError);
         await collectDiagnostics();
         return;
     }
 
-    await collectDiagnostics();
+    await checkModel();
+    await startCamera();
 
     if (navigator.mediaDevices?.addEventListener) {
         navigator.mediaDevices.addEventListener("devicechange", () => {
@@ -688,25 +620,13 @@ async function initTrainer() {
     diagnosticsPollId = window.setInterval(() => {
         collectDiagnostics().catch(console.error);
     }, 3000);
-
-    await startCamera();
 }
 
 nextGestureBtn.addEventListener("click", () => setGesture(currentGestureIndex + 1));
 prevGestureBtn.addEventListener("click", () => setGesture(currentGestureIndex - 1));
-retryCameraBtn.addEventListener("click", () => {
-    startCamera().catch(error => {
-        console.error(error);
-        cameraState.textContent = "Camera access failed";
-        gestureStatus.textContent = describeCameraError(error);
-    });
-});
-refreshDiagnosticsBtn.addEventListener("click", () => {
-    collectDiagnostics().catch(console.error);
-});
-calibrateBtn.addEventListener("click", () => {
-    beginCalibration();
-});
+retryCameraBtn.addEventListener("click", () => startCamera().catch(console.error));
+refreshDiagnosticsBtn.addEventListener("click", () => collectDiagnostics().catch(console.error));
+calibrateBtn.addEventListener("click", () => checkModel().catch(console.error));
 
 window.addEventListener("beforeunload", () => {
     if (diagnosticsPollId) {
@@ -718,5 +638,5 @@ window.addEventListener("beforeunload", () => {
 initTrainer().catch(error => {
     console.error(error);
     cameraState.textContent = "Trainer failed to load";
-    gestureStatus.textContent = "The page could not initialize MediaPipe.";
+    renderStatus(0, 0, "The page could not initialize the trained sign pipeline.");
 });
