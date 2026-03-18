@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ASL Sign Trainer</title>
     <link rel="stylesheet" href="./styles.css" />
-    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
 </head>
@@ -15,7 +14,7 @@
             <div class="gesture-hero">
                 <div class="theme-kicker">ASL Browser Trainer</div>
                 <h1>Practice The Signs We Trained</h1>
-                <p id="trainer-subtitle">Cycle through the trained ASL classes, hold the target sign steady, and let the browser-run model confirm when it recognizes the right one.</p>
+                <p id="trainer-subtitle">Cycle through the trained ASL classes, line up your live landmarks with the target overlay, and hold the final pose inside the allowed tolerance.</p>
                 <div class="gesture-mode-switch" role="group" aria-label="Practice mode">
                     <button id="mode-words-btn" type="button" class="gesture-mode-btn is-active">Words</button>
                     <button id="mode-alphabet-btn" type="button" class="gesture-mode-btn">Alphabet</button>
@@ -35,7 +34,7 @@
                     <div class="gesture-hand-card">
                         <div id="gesture-emoji" class="gesture-emoji" aria-hidden="true">OPEN</div>
                         <div class="gesture-hand-copy">
-                            <div class="gesture-label">Instruction</div>
+                            <div class="gesture-label">Template Goal</div>
                             <p id="gesture-instruction">Show the trained sign and hold it steady.</p>
                         </div>
                     </div>
@@ -71,12 +70,12 @@
                     <div class="gesture-calibration-card">
                         <div class="gesture-calibration-header">
                             <div>
-                                <div class="gesture-label">Browser Model</div>
-                                <h3>ONNX Runtime Web</h3>
+                                <div class="gesture-label">Recognition</div>
+                                <h3>Template Matcher</h3>
                             </div>
-                            <button id="calibrate-btn" type="button">Reload Model</button>
+                            <button id="calibrate-btn" type="button">Reload Templates</button>
                         </div>
-                        <p id="calibration-status" class="gesture-calibration-status">Loading browser model...</p>
+                        <p id="calibration-status" class="gesture-calibration-status">Loading pose templates...</p>
                     </div>
 
                     <div class="gesture-score-grid">
@@ -117,7 +116,7 @@
 
                     <div class="gesture-help-card">
                         <div class="gesture-label">Tips</div>
-                        <p id="camera-help-text">Keep one signer centered, show both hands and upper body when needed, and hold the target sign for about a second so the model sees a stable 40-frame sequence.</p>
+                        <p id="camera-help-text">Keep one signer centered, show both hands and upper body when needed, and match the last visible handshape to the target dots with a small tolerance.</p>
                         <button id="retry-camera-btn" type="button" class="secondary gesture-retry-btn">Retry Camera</button>
                     </div>
 
@@ -137,6 +136,6 @@
         </section>
     </main>
 
-    <script type="module" src="./js/gesture-trainer.js?v=20260318-8"></script>
+    <script type="module" src="./js/gesture-trainer.js?v=20260318-10"></script>
 </body>
 </html>
