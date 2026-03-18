@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ASL Letter A Test</title>
+    <title>ASL Handshape Alphabet Test</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
@@ -12,11 +12,18 @@
     <main class="gesture-page">
         <section class="gesture-shell">
             <div class="gesture-hero">
-                <div class="theme-kicker">ASL Letter Geometry</div>
-                <h1>Letter A Test</h1>
-                <p>Test only the ASL letter A with a geometric score based on fist shape, curled fingers, thumb placement, and wrist position relative to the body.</p>
+                <div class="theme-kicker">ASL Handshape Alphabet</div>
+                <h1>Primitive Letter Test</h1>
+                <p>Test letters through a base handshape detector first, then refine them with finger, thumb, body, and user-bound pose rules.</p>
                 <div class="gesture-link-row">
                     <a class="gesture-link-btn" href="./index.html">Back To Main Trainer</a>
+                </div>
+                <div class="gesture-mode-switch" role="group" aria-label="Test letter">
+                    <button data-letter="A" type="button" class="gesture-mode-btn is-active">A</button>
+                    <button data-letter="B" type="button" class="gesture-mode-btn">B</button>
+                    <button data-letter="C" type="button" class="gesture-mode-btn">C</button>
+                    <button data-letter="L" type="button" class="gesture-mode-btn">L</button>
+                    <button data-letter="Y" type="button" class="gesture-mode-btn">Y</button>
                 </div>
             </div>
 
@@ -25,9 +32,9 @@
                     <div class="gesture-target-header">
                         <div>
                             <div class="gesture-label">Target Letter</div>
-                            <h2>Letter A</h2>
+                            <h2 id="letter-title">Letter A</h2>
                         </div>
-                        <div class="gesture-step">Geometry Only</div>
+                        <div id="primitive-label" class="gesture-step">Primitive: fist</div>
                     </div>
 
                     <div class="gesture-hand-card">
@@ -45,7 +52,7 @@
                         </div>
                         <div class="gesture-hand-copy">
                             <div class="gesture-label">Target</div>
-                            <p>Make a closed fist, keep the fingers curled, and rest the thumb across the side/front of the fist.</p>
+                            <p id="target-copy">Make a closed fist, keep the fingers curled, and rest the thumb across the side/front of the fist.</p>
                         </div>
                     </div>
 
@@ -57,18 +64,18 @@
                             </div>
                             <div class="gesture-check-badge is-neutral">No shadow overlay</div>
                         </div>
-                        <p class="gesture-guide-description">This page does not draw the target sign on top of the camera. It only scores the current frame.</p>
+                        <p class="gesture-guide-description">This page does not draw the target sign on top of the camera. It scores the live frame from a primitive handshape and then applies letter-specific rules.</p>
                         <div class="gesture-guide-chips">
-                            <span class="gesture-guide-chip">Fist shape</span>
-                            <span class="gesture-guide-chip">Finger curl</span>
-                            <span class="gesture-guide-chip">Thumb placement</span>
-                            <span class="gesture-guide-chip">Body-relative wrist position</span>
+                            <span class="gesture-guide-chip">Primitive handshape</span>
+                            <span class="gesture-guide-chip">Finger rules</span>
+                            <span class="gesture-guide-chip">Thumb rules</span>
+                            <span class="gesture-guide-chip">Optional bound pose</span>
                         </div>
                         <div class="gesture-guide-steps">
                             <div class="gesture-guide-step"><div class="gesture-guide-step-index">1</div><div class="gesture-guide-step-copy">Show one clear hand in the frame.</div></div>
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">2</div><div class="gesture-guide-step-copy">Close the fingers into a fist.</div></div>
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">3</div><div class="gesture-guide-step-copy">Place the thumb along the side/front of the fist.</div></div>
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">4</div><div class="gesture-guide-step-copy">Hold the pose for about one second.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">2</div><div class="gesture-guide-step-copy">Match the primitive handshape for the selected letter.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">3</div><div class="gesture-guide-step-copy">Adjust thumb and finger details until the score rises.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">4</div><div class="gesture-guide-step-copy">If needed, bind your own pose and reuse it later.</div></div>
                         </div>
                     </div>
 
@@ -84,7 +91,7 @@
 
                     <div class="gesture-score-grid">
                         <article class="gesture-score-card">
-                            <div class="gesture-label">Letter A Score</div>
+                            <div class="gesture-label">Current Letter Score</div>
                             <div id="gesture-score" class="gesture-score">0%</div>
                         </article>
                         <article class="gesture-score-card">
@@ -120,7 +127,7 @@
 
                     <div class="gesture-help-card">
                         <div class="gesture-label">Tips</div>
-                        <p>Keep your shoulders visible, use one clear hand, and make the fist large enough that MediaPipe can track all fingertips.</p>
+                        <p>Keep your shoulders visible, use one clear hand, and make the handshape large enough that MediaPipe can keep all five working points stable.</p>
                         <button id="retry-camera-btn" type="button" class="secondary gesture-retry-btn">Retry Camera</button>
                     </div>
 
@@ -128,7 +135,7 @@
                         <div class="gesture-diagnostics-header">
                             <div>
                                 <div class="gesture-label">Diagnostics</div>
-                                <h3>Letter A Geometry</h3>
+                                <h3>Primitive Letter Diagnostics</h3>
                             </div>
                             <button id="refresh-diagnostics-btn" type="button" class="secondary">Refresh</button>
                         </div>
@@ -140,6 +147,6 @@
         </section>
     </main>
 
-    <script type="module" src="./js/alphabet-a-test.js?v=20260319-1"></script>
+    <script type="module" src="./js/alphabet-a-test.js?v=20260319-2"></script>
 </body>
 </html>
