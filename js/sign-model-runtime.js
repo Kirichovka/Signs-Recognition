@@ -1,9 +1,10 @@
 export const MAX_SEQUENCE = 40;
 export const POSE_IDS = [0, 11, 12, 13, 14, 15, 16];
-const DEFAULT_MODEL_NAME = "everyday_daily_v1";
+export const DEFAULT_MODEL_NAME = "everyday_daily_v1";
+export const ALPHABET_MODEL_NAME = "alphabet_v1";
 const ORT_WASM_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
 
-let cachedModel = null;
+const modelCache = new Map();
 const imagePreprocessCanvas = document.createElement("canvas");
 const imagePreprocessCtx = imagePreprocessCanvas.getContext("2d", { willReadFrequently: true });
 
@@ -36,12 +37,23 @@ export function softmax(values) {
     return exps.map(value => value / sum);
 }
 
-export async function loadBrowserModel() {
-    if (cachedModel) {
-        return cachedModel;
+export function clearBrowserModelCache(modelName = "") {
+    if (modelName) {
+        modelCache.delete(modelName);
+        return;
+    }
+    modelCache.clear();
+}
+
+export async function loadBrowserModel(requestedModelName = "", options = {}) {
+    const modelName = requestedModelName || resolveRequestedModelName();
+    if (options.forceReload) {
+        modelCache.delete(modelName);
+    }
+    if (modelCache.has(modelName)) {
+        return modelCache.get(modelName);
     }
 
-    const modelName = resolveRequestedModelName();
     const { modelUrl, metadataUrl } = buildModelUrls(modelName);
 
     const metadataResponse = await fetch(metadataUrl);
@@ -60,7 +72,7 @@ export async function loadBrowserModel() {
         graphOptimizationLevel: "all"
     });
 
-    cachedModel = {
+    const loadedModel = {
         ...metadata,
         model_type: metadata.model_type || (metadata.sequence_length ? "sequence" : metadata.image_size ? "image" : "sequence"),
         requested_model_name: modelName,
@@ -68,7 +80,8 @@ export async function loadBrowserModel() {
         inputName: session.inputNames[0],
         outputName: session.outputNames[0]
     };
-    return cachedModel;
+    modelCache.set(modelName, loadedModel);
+    return loadedModel;
 }
 
 function buildSequenceTensor(model, sequence) {

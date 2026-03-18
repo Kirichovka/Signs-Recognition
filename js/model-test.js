@@ -9,7 +9,7 @@ import {
     startCameraStream,
     stopMediaStream,
     describeCameraError
-} from "./sign-model-runtime.js?v=20260318-7";
+} from "./sign-model-runtime.js?v=20260318-8";
 
 const inputVideo = document.getElementById("input-video");
 const outputCanvas = document.getElementById("output-canvas");

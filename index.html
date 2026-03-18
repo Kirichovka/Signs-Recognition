@@ -15,14 +15,18 @@
             <div class="gesture-hero">
                 <div class="theme-kicker">ASL Browser Trainer</div>
                 <h1>Practice The Signs We Trained</h1>
-                <p>Cycle through the trained ASL classes, hold the target sign steady, and let the browser-run model confirm when it recognizes the right one.</p>
+                <p id="trainer-subtitle">Cycle through the trained ASL classes, hold the target sign steady, and let the browser-run model confirm when it recognizes the right one.</p>
+                <div class="gesture-mode-switch" role="group" aria-label="Practice mode">
+                    <button id="mode-words-btn" type="button" class="gesture-mode-btn is-active">Words</button>
+                    <button id="mode-alphabet-btn" type="button" class="gesture-mode-btn">Alphabet</button>
+                </div>
             </div>
 
             <div class="gesture-layout">
                 <section class="gesture-panel gesture-target-panel">
                     <div class="gesture-target-header">
                         <div>
-                            <div class="gesture-label">Target Sign</div>
+                            <div id="gesture-target-label" class="gesture-label">Target Sign</div>
                             <h2 id="gesture-title">Open Palm</h2>
                         </div>
                         <div id="gesture-step" class="gesture-step">1 / 50</div>
@@ -113,7 +117,7 @@
 
                     <div class="gesture-help-card">
                         <div class="gesture-label">Tips</div>
-                        <p>Keep one signer centered, show both hands and upper body when needed, and hold the target sign for about a second so the model sees a stable 40-frame sequence.</p>
+                        <p id="camera-help-text">Keep one signer centered, show both hands and upper body when needed, and hold the target sign for about a second so the model sees a stable 40-frame sequence.</p>
                         <button id="retry-camera-btn" type="button" class="secondary gesture-retry-btn">Retry Camera</button>
                     </div>
 
@@ -133,6 +137,6 @@
         </section>
     </main>
 
-    <script type="module" src="./js/gesture-trainer.js?v=20260318-7"></script>
+    <script type="module" src="./js/gesture-trainer.js?v=20260318-8"></script>
 </body>
 </html>

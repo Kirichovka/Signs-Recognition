@@ -55,6 +55,26 @@ button.secondary { background: #64748b; }
     line-height: 1.6;
     color: var(--color-text-muted);
 }
+.gesture-mode-switch {
+    display: inline-flex;
+    gap: 10px;
+    margin-top: 18px;
+    padding: 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid var(--color-soft-border);
+}
+.gesture-mode-btn {
+    min-height: 42px;
+    padding: 10px 16px;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--color-text-brand);
+}
+.gesture-mode-btn.is-active {
+    background: linear-gradient(90deg, #2563eb 0%, #0ea5e9 100%);
+    color: #fff;
+}
 .gesture-layout {
     display: grid;
     grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
@@ -436,6 +456,13 @@ button.secondary { background: #64748b; }
     .gesture-page { padding: 16px; padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
     .gesture-target-panel, .gesture-camera-panel { padding: 18px; }
     .gesture-hero h1 { font-size: 32px; }
+    .gesture-mode-switch {
+        display: flex;
+        width: 100%;
+    }
+    .gesture-mode-btn {
+        flex: 1 1 0;
+    }
     .gesture-hand-card, .gesture-progress-card, .gesture-score-card, .gesture-checklist-card, .gesture-help-card, .gesture-calibration-card {
         padding: 16px;
         border-radius: 18px;
