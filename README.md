@@ -333,6 +333,23 @@ python run_model_pipelines.py ^
   --alphabet-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_semcom\ASL_SemCom
 ```
 
+## Unified model export for web
+
+If you want one command for converting trained checkpoints into browser-ready ONNX artifacts:
+
+- script: [`python/export_models_for_web.py`](/D:/Integration-Game/gesture-trainer-web/python/export_models_for_web.py)
+- guide: [Web Export](./docs/WEB_EXPORT.md)
+
+It supports:
+
+- `word`
+- `alphabet`
+- `all`
+
+and can optionally publish the exported files directly into:
+
+- [`models`](/D:/Integration-Game/gesture-trainer-web/models)
+
 ## Optional local Python backend
 
 Even though the web app now works without a backend, the local FastAPI server is still useful for:
@@ -358,6 +375,7 @@ That server is optional for normal website use.
 - [Architecture](./docs/ARCHITECTURE.md)
 - [Training Pipeline](./docs/TRAINING_PIPELINE.md)
 - [Troubleshooting](./docs/TROUBLESHOOTING.md)
+- [Web Export](./docs/WEB_EXPORT.md)
 
 ## Short retraining workflow
 

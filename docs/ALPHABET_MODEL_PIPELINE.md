@@ -41,6 +41,10 @@ ASL_SemCom/
 
 - [`python/export_alphabet_model_onnx.py`](/D:/Integration-Game/gesture-trainer-web/python/export_alphabet_model_onnx.py)
 
+There is also a unified web-export launcher:
+
+- [Web Export](./WEB_EXPORT.md)
+
 ## Example run
 
 ```powershell

@@ -176,6 +176,10 @@ This script gives:
 - automatic ONNX export
 - a final `pipeline_summary.json`
 
+There is also a unified web-export launcher for manual export of trained checkpoints:
+
+- [Web Export](./WEB_EXPORT.md)
+
 ## Current limitation
 
 The script assumes:
