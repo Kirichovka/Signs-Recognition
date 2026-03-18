@@ -296,6 +296,15 @@ async function startCamera() {
     }
 
     try {
+        let videoDevices = [];
+        if (navigator.mediaDevices?.enumerateDevices) {
+            try {
+                videoDevices = (await navigator.mediaDevices.enumerateDevices()).filter(device => device.kind === "videoinput");
+            } catch (error) {
+                console.warn("Could not enumerate video devices before camera start.", error);
+            }
+        }
+
         const attempts = [
             {
                 audio: false,
@@ -317,6 +326,16 @@ async function startCamera() {
                 video: true
             }
         ];
+        if (videoDevices[0]?.deviceId) {
+            attempts.unshift({
+                audio: false,
+                video: {
+                    deviceId: { exact: videoDevices[0].deviceId },
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
+            });
+        }
         let lastError = null;
         for (const constraints of attempts) {
             try {
