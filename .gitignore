@@ -1,4 +1,5 @@
 .venv/
+python/.venv-wsl/
 __pycache__/
 *.pyc
 
