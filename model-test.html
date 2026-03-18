@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ASL Model Test</title>
     <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
 </head>
@@ -12,9 +13,9 @@
     <main class="gesture-page">
         <section class="gesture-shell">
             <div class="gesture-hero">
-                <div class="theme-kicker">ASL Citizen Model</div>
+                <div class="theme-kicker">ASL Browser Model</div>
                 <h1>Live Sign Recognition Test</h1>
-                <p>Open the camera, keep one signer in frame, and watch the locally hosted model predict the top sign candidates.</p>
+                <p>Open the camera, keep one signer in frame, and watch the browser-run ONNX model predict the top sign candidates without any backend.</p>
             </div>
 
             <div class="gesture-layout">
@@ -22,7 +23,7 @@
                     <div class="gesture-target-header">
                         <div>
                             <div class="gesture-label">Model State</div>
-                            <h2 id="model-status-title">Loading local model...</h2>
+                            <h2 id="model-status-title">Loading browser model...</h2>
                         </div>
                         <div id="model-health-badge" class="gesture-step">Checking</div>
                     </div>
@@ -56,8 +57,8 @@
 
                     <div class="gesture-help-card">
                         <div class="gesture-label">Tips</div>
-                        <p>Stay centered, keep your upper body visible, and hold the sign for about a second so the 40-frame sequence stays consistent.</p>
-                        <button id="retry-model-btn" type="button" class="secondary gesture-retry-btn">Retry Model Check</button>
+                        <p>Stay centered, keep your upper body visible, and hold the sign for about a second so the 40-frame sequence stays consistent for the ONNX model.</p>
+                        <button id="retry-model-btn" type="button" class="secondary gesture-retry-btn">Reload Model</button>
                     </div>
                 </section>
 
@@ -83,7 +84,7 @@
                             </div>
                             <button id="retry-camera-btn" type="button" class="secondary">Retry Camera</button>
                         </div>
-                        <div id="diagnostics-summary" class="gesture-diagnostics-summary">Waiting for the model and camera to become ready.</div>
+                        <div id="diagnostics-summary" class="gesture-diagnostics-summary">Waiting for the browser model and camera to become ready.</div>
                         <div id="diagnostics-list" class="gesture-diagnostics-list"></div>
                     </div>
                 </section>
@@ -91,6 +92,6 @@
         </section>
     </main>
 
-    <script type="module" src="./js/model-test.js?v=20260318-3"></script>
+    <script type="module" src="./js/model-test.js?v=20260318-4"></script>
 </body>
 </html>

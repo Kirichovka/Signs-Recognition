@@ -1,7 +1,15 @@
-const MAX_SEQUENCE = 40;
-const POSE_IDS = [0, 11, 12, 13, 14, 15, 16];
-const MODEL_HEALTH_URL = "/api/health";
-const MODEL_PREDICT_URL = "/api/predict";
+import {
+    MAX_SEQUENCE,
+    drawHolisticResults,
+    featureVectorFromResults,
+    getCameraPermissionState,
+    loadBrowserModel,
+    predictWithBrowserModel,
+    prettifyLabel,
+    startCameraStream,
+    stopMediaStream,
+    describeCameraError
+} from "./sign-model-runtime.js";
 
 const inputVideo = document.getElementById("input-video");
 const outputCanvas = document.getElementById("output-canvas");
@@ -27,7 +35,7 @@ let holistic = null;
 let frameBuffer = [];
 let predictionInFlight = false;
 let frameCounter = 0;
-let lastModelInfo = null;
+let modelState = null;
 let cameraReady = false;
 
 function formatTime(date) {
@@ -56,20 +64,27 @@ function renderDiagnosticRows(rows) {
     }
 }
 
-function updateDiagnostics(extra = {}) {
-    diagnosticsSummary.textContent = extra.summary || "Capture is running locally through the browser and localhost inference API.";
+async function updateDiagnostics(extra = {}) {
+    const permissionState = await getCameraPermissionState();
+    diagnosticsSummary.textContent = extra.summary || "Everything is running directly in the browser. No Python backend is required for this page.";
     renderDiagnosticRows([
         {
-            label: "Model API",
-            value: lastModelInfo ? `Loaded ${lastModelInfo.num_classes} classes from ${lastModelInfo.model_name}.` : "Health check has not completed yet.",
-            badge: lastModelInfo ? "Ready" : "Checking",
-            tone: lastModelInfo ? "is-good" : "is-neutral"
+            label: "Browser model",
+            value: modelState ? `Loaded ${modelState.num_classes} labels from ${modelState.model_name}.` : "Model has not loaded yet.",
+            badge: modelState ? "Ready" : "Loading",
+            tone: modelState ? "is-good" : "is-neutral"
         },
         {
             label: "Camera state",
             value: cameraReady ? "Video frames are available for holistic tracking." : "Camera stream is not ready yet.",
             badge: cameraReady ? "Live" : "Waiting",
             tone: cameraReady ? "is-good" : "is-neutral"
+        },
+        {
+            label: "Permission",
+            value: `Camera permission state: ${permissionState}.`,
+            badge: permissionState,
+            tone: permissionState === "granted" ? "is-good" : permissionState === "denied" ? "is-bad" : "is-neutral"
         },
         {
             label: "Frame buffer",
@@ -79,116 +94,11 @@ function updateDiagnostics(extra = {}) {
         },
         {
             label: "Inference loop",
-            value: predictionInFlight ? "A prediction request is currently running." : "The browser is ready to send the next sequence.",
+            value: predictionInFlight ? "A prediction request is currently running inside ONNX Runtime Web." : "The browser is ready to run the next sequence.",
             badge: predictionInFlight ? "Busy" : "Idle",
             tone: predictionInFlight ? "is-neutral" : "is-good"
         }
     ]);
-}
-
-function emptyHand() {
-    return Array.from({ length: 21 }, () => ({ x: 0, y: 0, z: 0 }));
-}
-
-function emptyPose() {
-    return Array.from({ length: POSE_IDS.length }, () => ({ x: 0, y: 0, z: 0, visibility: 0 }));
-}
-
-function toLandmarkArray(landmarks, count) {
-    if (!landmarks?.length) {
-        return Array.from({ length: count }, () => ({ x: 0, y: 0, z: 0 }));
-    }
-    return Array.from({ length: count }, (_, index) => landmarks[index] || { x: 0, y: 0, z: 0 });
-}
-
-function toPoseSubset(landmarks) {
-    if (!landmarks?.length) {
-        return emptyPose();
-    }
-    return POSE_IDS.map(index => landmarks[index] || { x: 0, y: 0, z: 0, visibility: 0 });
-}
-
-function normalizeLandmarks(leftHand, rightHand, pose) {
-    const leftShoulder = pose[1];
-    const rightShoulder = pose[2];
-    const shoulderVisible = leftShoulder.visibility >= 0.3 && rightShoulder.visibility >= 0.3;
-
-    let centerX = 0.5;
-    let centerY = 0.5;
-    let scale = 0.15;
-
-    if (shoulderVisible) {
-        centerX = (leftShoulder.x + rightShoulder.x) / 2;
-        centerY = (leftShoulder.y + rightShoulder.y) / 2;
-        scale = Math.hypot(leftShoulder.x - rightShoulder.x, leftShoulder.y - rightShoulder.y);
-    } else {
-        const wrists = [];
-        if (leftHand.some(point => point.x || point.y || point.z)) {
-            wrists.push(leftHand[0]);
-        }
-        if (rightHand.some(point => point.x || point.y || point.z)) {
-            wrists.push(rightHand[0]);
-        }
-        if (wrists.length) {
-            centerX = wrists.reduce((sum, point) => sum + point.x, 0) / wrists.length;
-            centerY = wrists.reduce((sum, point) => sum + point.y, 0) / wrists.length;
-        }
-    }
-
-    scale = Math.max(scale, 1e-4);
-
-    const normalize3 = points => points.flatMap(point => [
-        (point.x - centerX) / scale,
-        (point.y - centerY) / scale,
-        point.z / scale
-    ]);
-
-    const normalizePose = points => points.flatMap(point => [
-        (point.x - centerX) / scale,
-        (point.y - centerY) / scale,
-        point.z / scale,
-        point.visibility || 0
-    ]);
-
-    return [
-        ...normalize3(leftHand),
-        ...normalize3(rightHand),
-        ...normalizePose(pose)
-    ];
-}
-
-function appendFrame(results) {
-    const leftHand = toLandmarkArray(results.leftHandLandmarks, 21);
-    const rightHand = toLandmarkArray(results.rightHandLandmarks, 21);
-    const pose = toPoseSubset(results.poseLandmarks);
-    const featureVector = normalizeLandmarks(leftHand, rightHand, pose);
-    frameBuffer.push(featureVector);
-    if (frameBuffer.length > MAX_SEQUENCE) {
-        frameBuffer.shift();
-    }
-    bufferedFrames.textContent = `${frameBuffer.length}`;
-    updateDiagnostics();
-}
-
-function drawResults(results) {
-    outputCanvas.width = inputVideo.videoWidth || 1280;
-    outputCanvas.height = inputVideo.videoHeight || 720;
-    canvasCtx.save();
-    canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
-    canvasCtx.translate(outputCanvas.width, 0);
-    canvasCtx.scale(-1, 1);
-    canvasCtx.drawImage(results.image, 0, 0, outputCanvas.width, outputCanvas.height);
-
-    const drawLandmarkSet = (landmarks, connections, connectorColor, fillColor) => {
-        if (!landmarks) { return; }
-        window.drawConnectors(canvasCtx, landmarks, connections, { color: connectorColor, lineWidth: 3 });
-        window.drawLandmarks(canvasCtx, landmarks, { color: "#eff6ff", fillColor, radius: 3 });
-    };
-
-    drawLandmarkSet(results.poseLandmarks, window.POSE_CONNECTIONS, "#fb7185", "#be123c");
-    drawLandmarkSet(results.leftHandLandmarks, window.HAND_CONNECTIONS, "#f97316", "#7c2d12");
-    drawLandmarkSet(results.rightHandLandmarks, window.HAND_CONNECTIONS, "#38bdf8", "#1d4ed8");
-    canvasCtx.restore();
 }
 
 function renderPredictions(predictions) {
@@ -197,7 +107,7 @@ function renderPredictions(predictions) {
         const row = document.createElement("div");
         row.className = "gesture-check-row";
         const label = document.createElement("span");
-        label.textContent = `${index + 1}. ${item.label}`;
+        label.textContent = `${index + 1}. ${prettifyLabel(item.label)}`;
         const value = document.createElement("span");
         value.textContent = `${Math.round(item.score * 100)}%`;
         value.className = `gesture-check-badge ${index === 0 ? "is-good" : "is-neutral"}`;
@@ -207,23 +117,15 @@ function renderPredictions(predictions) {
 }
 
 async function predictSequence() {
-    if (predictionInFlight || frameBuffer.length < MAX_SEQUENCE || !lastModelInfo) {
+    if (predictionInFlight || frameBuffer.length < MAX_SEQUENCE || !modelState) {
         return;
     }
     predictionInFlight = true;
-    updateDiagnostics();
+    await updateDiagnostics();
     try {
-        const response = await fetch(MODEL_PREDICT_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sequence: frameBuffer })
-        });
-        if (!response.ok) {
-            throw new Error(`Prediction failed with status ${response.status}`);
-        }
-        const result = await response.json();
+        const result = await predictWithBrowserModel(modelState, frameBuffer);
         const best = result.predictions[0];
-        topPredictionLabel.textContent = best ? best.label : "No prediction";
+        topPredictionLabel.textContent = best ? prettifyLabel(best.label) : "No prediction";
         topPredictionScore.textContent = best ? `Confidence ${Math.round(best.score * 100)}%` : "No confidence available";
         renderPredictions(result.predictions);
         lastInferenceAt.textContent = formatTime(new Date());
@@ -233,48 +135,59 @@ async function predictSequence() {
         topPredictionScore.textContent = error.message;
     } finally {
         predictionInFlight = false;
-        updateDiagnostics();
+        await updateDiagnostics();
     }
 }
 
 async function checkModel() {
-    modelStatusTitle.textContent = "Checking local model...";
-    modelHealthBadge.textContent = "Checking";
+    modelStatusTitle.textContent = "Loading browser model...";
+    modelHealthBadge.textContent = "Loading";
     try {
-        const response = await fetch(MODEL_HEALTH_URL);
-        if (!response.ok) {
-            throw new Error(`Health check failed with status ${response.status}`);
-        }
-        lastModelInfo = await response.json();
-        modelStatusTitle.textContent = "Local model is ready";
-        modelHealthBadge.textContent = `${lastModelInfo.num_classes} classes`;
-        updateDiagnostics();
+        modelState = await loadBrowserModel();
+        modelStatusTitle.textContent = "Browser model is ready";
+        modelHealthBadge.textContent = `${modelState.num_classes} classes`;
+        await updateDiagnostics();
     } catch (error) {
         console.error(error);
-        lastModelInfo = null;
-        modelStatusTitle.textContent = "Model API unavailable";
+        modelState = null;
+        modelStatusTitle.textContent = "Model unavailable";
         modelHealthBadge.textContent = "Offline";
-        diagnosticsSummary.textContent = `Could not reach localhost model server: ${error.message}`;
-        updateDiagnostics({ summary: `Could not reach localhost model server: ${error.message}` });
+        await updateDiagnostics({ summary: `Could not load the browser model: ${error.message}` });
+    }
+}
+
+function stopLoop() {
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = 0;
+    }
+    stopMediaStream(activeStream);
+    activeStream = null;
+    cameraReady = false;
+}
+
+function processResults(results) {
+    drawHolisticResults(canvasCtx, outputCanvas, inputVideo, results);
+    frameBuffer.push(featureVectorFromResults(results));
+    if (frameBuffer.length > MAX_SEQUENCE) {
+        frameBuffer.shift();
+    }
+    bufferedFrames.textContent = `${frameBuffer.length}`;
+    frameCounter += 1;
+    cameraReady = true;
+    cameraState.textContent = "Camera is live";
+    if (frameCounter % 6 === 0) {
+        predictSequence().catch(console.error);
     }
 }
 
 async function startCamera() {
     cameraState.textContent = "Starting camera...";
-    cameraReady = false;
-    updateDiagnostics();
-
-    if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-        animationFrameId = 0;
-    }
-    if (activeStream) {
-        activeStream.getTracks().forEach(track => track.stop());
-        activeStream = null;
-    }
+    stopLoop();
+    await updateDiagnostics();
 
     if (!holistic) {
-        holistic = new window.Holistic({
+        holistic = new globalThis.Holistic({
             locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
         });
         holistic.setOptions({
@@ -283,78 +196,13 @@ async function startCamera() {
             minDetectionConfidence: 0.5,
             minTrackingConfidence: 0.5
         });
-        holistic.onResults(async results => {
-            drawResults(results);
-            appendFrame(results);
-            frameCounter += 1;
-            cameraReady = true;
-            cameraState.textContent = "Camera is live";
-            if (frameCounter % 6 === 0) {
-                await predictSequence();
-            }
-        });
+        holistic.onResults(processResults);
     }
 
     try {
-        let videoDevices = [];
-        if (navigator.mediaDevices?.enumerateDevices) {
-            try {
-                videoDevices = (await navigator.mediaDevices.enumerateDevices()).filter(device => device.kind === "videoinput");
-            } catch (error) {
-                console.warn("Could not enumerate video devices before camera start.", error);
-            }
-        }
-
-        const attempts = [
-            {
-                audio: false,
-                video: {
-                    facingMode: "user",
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                }
-            },
-            {
-                audio: false,
-                video: {
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                }
-            },
-            {
-                audio: false,
-                video: true
-            }
-        ];
-        if (videoDevices[0]?.deviceId) {
-            attempts.unshift({
-                audio: false,
-                video: {
-                    deviceId: { exact: videoDevices[0].deviceId },
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                }
-            });
-        }
-        let lastError = null;
-        for (const constraints of attempts) {
-            try {
-                activeStream = await navigator.mediaDevices.getUserMedia(constraints);
-                break;
-            } catch (error) {
-                lastError = error;
-                if (error?.name !== "NotFoundError" && error?.name !== "OverconstrainedError") {
-                    throw error;
-                }
-            }
-        }
-        if (!activeStream) {
-            throw lastError || new Error("Camera access failed.");
-        }
-
+        activeStream = await startCameraStream();
         inputVideo.srcObject = activeStream;
         await inputVideo.play();
-
         const processFrame = async () => {
             if (!activeStream || inputVideo.readyState < 2) {
                 animationFrameId = requestAnimationFrame(processFrame);
@@ -363,14 +211,12 @@ async function startCamera() {
             await holistic.send({ image: inputVideo });
             animationFrameId = requestAnimationFrame(processFrame);
         };
-
         animationFrameId = requestAnimationFrame(processFrame);
     } catch (error) {
         console.error(error);
         cameraState.textContent = "Camera failed";
-        diagnosticsSummary.textContent = `Camera could not start: ${error.message}`;
+        await updateDiagnostics({ summary: `Camera could not start: ${describeCameraError(error)}` });
     }
-    updateDiagnostics();
 }
 
 retryModelBtn.addEventListener("click", () => {
@@ -381,13 +227,17 @@ retryCameraBtn.addEventListener("click", () => {
     startCamera().catch(console.error);
 });
 
-resetBufferBtn.addEventListener("click", () => {
+resetBufferBtn.addEventListener("click", async () => {
     frameBuffer = [];
     bufferedFrames.textContent = "0";
     topPredictionLabel.textContent = "Waiting for frames";
     topPredictionScore.textContent = "Need 40 frames before the first inference.";
     predictionList.innerHTML = "";
-    updateDiagnostics({ summary: "The sequence buffer was cleared. Hold a sign steady to collect a new 40-frame window." });
+    await updateDiagnostics({ summary: "The sequence buffer was cleared. Hold a sign steady to collect a new 40-frame window." });
+});
+
+window.addEventListener("beforeunload", () => {
+    stopLoop();
 });
 
 checkModel().catch(console.error);

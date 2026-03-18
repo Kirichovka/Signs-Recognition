@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ASL Sign Trainer</title>
     <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
 </head>
@@ -12,9 +13,9 @@
     <main class="gesture-page">
         <section class="gesture-shell">
             <div class="gesture-hero">
-                <div class="theme-kicker">ASL Model Trainer</div>
+                <div class="theme-kicker">ASL Browser Trainer</div>
                 <h1>Practice The Signs We Trained</h1>
-                <p>Cycle through the trained ASL classes, hold the target sign steady, and let the model confirm when it recognizes the right one.</p>
+                <p>Cycle through the trained ASL classes, hold the target sign steady, and let the browser-run model confirm when it recognizes the right one.</p>
             </div>
 
             <div class="gesture-layout">
@@ -48,12 +49,12 @@
                     <div class="gesture-calibration-card">
                         <div class="gesture-calibration-header">
                             <div>
-                                <div class="gesture-label">Model API</div>
-                                <h3>Local Backend</h3>
+                                <div class="gesture-label">Browser Model</div>
+                                <h3>ONNX Runtime Web</h3>
                             </div>
-                            <button id="calibrate-btn" type="button">Retry API</button>
+                            <button id="calibrate-btn" type="button">Reload Model</button>
                         </div>
-                        <p id="calibration-status" class="gesture-calibration-status">Checking localhost model API...</p>
+                        <p id="calibration-status" class="gesture-calibration-status">Loading browser model...</p>
                     </div>
 
                     <div class="gesture-score-grid">
@@ -114,6 +115,6 @@
         </section>
     </main>
 
-    <script type="module" src="./js/gesture-trainer.js?v=20260318-3"></script>
+    <script type="module" src="./js/gesture-trainer.js?v=20260318-4"></script>
 </body>
 </html>

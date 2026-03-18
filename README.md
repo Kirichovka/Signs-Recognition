@@ -2,6 +2,16 @@
 
 Standalone project for simple child-friendly hand sign practice.
 
+## Browser inference
+
+The trained sign model can now run fully in the browser through `onnxruntime-web`.
+
+- Main trainer: `index.html`
+- Standalone recognition test: `model-test.html`
+- Static model files: `models/asl_citizen_50.onnx` and `models/asl_citizen_50_metadata.json`
+
+This means GitHub Pages or Netlify static hosting is enough for live sign recognition. No Python backend is required for the web UI anymore.
+
 ## Web version
 
 ```powershell
