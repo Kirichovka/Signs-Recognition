@@ -273,16 +273,16 @@ function getGestureGuide(gesture) {
     }[zone];
 
     const movementVisual = {
-        still: { rotation: "0deg", scale: "1", tone: "Hold" },
-        right: { rotation: "0deg", scale: "1", tone: "Move right" },
-        left: { rotation: "180deg", scale: "1", tone: "Move left" },
-        up: { rotation: "-90deg", scale: "1", tone: "Lift up" },
-        down: { rotation: "90deg", scale: "1", tone: "Move down" },
-        tap: { rotation: "90deg", scale: "0.55", tone: "Short tap" },
-        swing: { rotation: "0deg", scale: "0.8", tone: "Rock gently" },
-        bounce: { rotation: "90deg", scale: "0.8", tone: "Bounce" },
-        float: { rotation: "-35deg", scale: "0.85", tone: "Float" },
-        short: { rotation: "0deg", scale: "0.55", tone: "Short move" }
+        still: { rotation: 0, scale: 1, tone: "Hold" },
+        right: { rotation: 0, scale: 1, tone: "Move right" },
+        left: { rotation: 180, scale: 1, tone: "Move left" },
+        up: { rotation: -90, scale: 1, tone: "Lift up" },
+        down: { rotation: 90, scale: 1, tone: "Move down" },
+        tap: { rotation: 90, scale: 0.55, tone: "Short tap" },
+        swing: { rotation: 0, scale: 0.8, tone: "Rock gently" },
+        bounce: { rotation: 90, scale: 0.8, tone: "Bounce" },
+        float: { rotation: -35, scale: 0.85, tone: "Float" },
+        short: { rotation: 0, scale: 0.55, tone: "Short move" }
     }[movement];
 
     return {
