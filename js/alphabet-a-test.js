@@ -202,6 +202,22 @@ function getBodyFrame(results) {
     return { center, scale };
 }
 
+function thumbMetricsInHandFrame(wrist, indexMcp, middleMcp, thumbTip, handScale) {
+    const upXRaw = middleMcp.x - wrist.x;
+    const upYRaw = middleMcp.y - wrist.y;
+    const upLength = Math.hypot(upXRaw, upYRaw) || 1;
+    const upX = upXRaw / upLength;
+    const upY = upYRaw / upLength;
+    const sideX = -upY;
+    const sideY = upX;
+    const thumbVecX = thumbTip.x - indexMcp.x;
+    const thumbVecY = thumbTip.y - indexMcp.y;
+    return {
+        thumbLateral: Math.abs(((thumbVecX * sideX) + (thumbVecY * sideY)) / handScale),
+        thumbForward: Math.abs(((thumbVecX * upX) + (thumbVecY * upY)) / handScale)
+    };
+}
+
 function getFingerMetrics(handLandmarks) {
     const wrist = handLandmarks[0];
     const thumbTip = handLandmarks[4];
@@ -232,6 +248,8 @@ function getFingerMetrics(handLandmarks) {
         ])
     );
 
+    const { thumbLateral, thumbForward } = thumbMetricsInHandFrame(wrist, indexMcp, middleMcp, thumbTip, handScale);
+
     return {
         wrist,
         thumbTip,
@@ -244,8 +262,8 @@ function getFingerMetrics(handLandmarks) {
         ringCurled: scoreCurledFinger(ringMcp, ringPip, ringDip, ringTip),
         pinkyStraight: scoreStraightFinger(pinkyMcp, pinkyPip, pinkyDip, pinkyTip),
         pinkyCurled: scoreCurledFinger(pinkyMcp, pinkyPip, pinkyDip, pinkyTip),
-        thumbHorizontal: Math.abs((thumbTip.x - indexMcp.x) / handScale),
-        thumbVertical: Math.abs((thumbTip.y - indexMcp.y) / handScale),
+        thumbLateral,
+        thumbForward,
         handScale
     };
 }
@@ -272,7 +290,7 @@ function scoreLetterAComponents(metrics) {
             metrics.ringCurled.score,
             metrics.pinkyCurled.score
         ]),
-        thumbScore: (scoreProximity(metrics.thumbHorizontal, 0.58, 0.42) * 0.7) + (scoreProximity(metrics.thumbVertical, 0.12, 0.28) * 0.3)
+        thumbScore: (scoreProximity(metrics.thumbLateral, 0.62, 0.36) * 0.75) + (scoreProximity(metrics.thumbForward, 0.14, 0.24) * 0.25)
     };
 }
 
@@ -284,7 +302,7 @@ function scoreLetterBComponents(metrics) {
             metrics.ringStraight.score,
             metrics.pinkyStraight.score
         ]),
-        thumbScore: (scoreProximity(metrics.thumbHorizontal, 0.18, 0.25) * 0.55) + (scoreProximity(metrics.thumbVertical, 0.3, 0.28) * 0.45)
+        thumbScore: (scoreProximity(metrics.thumbLateral, 0.2, 0.22) * 0.55) + (scoreProximity(metrics.thumbForward, 0.28, 0.26) * 0.45)
     };
 }
 
@@ -296,7 +314,7 @@ function scoreLetterCComponents(metrics) {
             scoreProximity(metrics.ringStraight.pipAngle, 128, 42),
             scoreProximity(metrics.pinkyStraight.pipAngle, 122, 45)
         ]),
-        thumbScore: (scoreProximity(metrics.thumbHorizontal, 0.42, 0.32) * 0.7) + (scoreProximity(metrics.thumbVertical, 0.34, 0.28) * 0.3)
+        thumbScore: (scoreProximity(metrics.thumbLateral, 0.4, 0.28) * 0.7) + (scoreProximity(metrics.thumbForward, 0.34, 0.24) * 0.3)
     };
 }
 
@@ -308,7 +326,7 @@ function scoreLetterLComponents(metrics) {
             metrics.ringCurled.score,
             metrics.pinkyCurled.score
         ]),
-        thumbScore: (scoreProximity(metrics.thumbHorizontal, 0.88, 0.38) * 0.75) + (scoreProximity(metrics.thumbVertical, 0.08, 0.22) * 0.25)
+        thumbScore: (scoreProximity(metrics.thumbLateral, 0.9, 0.35) * 0.75) + (scoreProximity(metrics.thumbForward, 0.12, 0.22) * 0.25)
     };
 }
 
@@ -320,7 +338,7 @@ function scoreLetterYComponents(metrics) {
             metrics.ringCurled.score,
             metrics.pinkyStraight.score
         ]),
-        thumbScore: (scoreProximity(metrics.thumbHorizontal, 0.92, 0.4) * 0.75) + (scoreProximity(metrics.thumbVertical, 0.16, 0.28) * 0.25)
+        thumbScore: (scoreProximity(metrics.thumbLateral, 0.92, 0.36) * 0.75) + (scoreProximity(metrics.thumbForward, 0.16, 0.24) * 0.25)
     };
 }
 
@@ -353,7 +371,7 @@ function evaluateBoundPose(sample) {
     }
     const pointScore = compareVectors(sample.flattenedSparse, boundPose.flattenedSparse, 0.6);
     const angleScore = compareVectors(sample.fingerAngles, boundPose.fingerAngles, 70);
-    const thumbScore = (scoreProximity(sample.thumbHorizontal, boundPose.thumbHorizontal, 0.45) * 0.7) + (scoreProximity(sample.thumbVertical, boundPose.thumbVertical, 0.35) * 0.3);
+    const thumbScore = (scoreProximity(sample.thumbLateral, boundPose.thumbLateral, 0.38) * 0.7) + (scoreProximity(sample.thumbForward, boundPose.thumbForward, 0.32) * 0.3);
     const bodyScore = (scoreProximity(sample.wristX, boundPose.wristX, 0.9) * 0.45) + (scoreProximity(sample.wristY, boundPose.wristY, 0.9) * 0.55);
     return (pointScore * 0.35) + (angleScore * 0.3) + (thumbScore * 0.2) + (bodyScore * 0.15);
 }
@@ -381,8 +399,8 @@ function scoreCurrentLetter(results) {
                 metrics.ringStraight.pipAngle, metrics.ringStraight.dipAngle,
                 metrics.pinkyStraight.pipAngle, metrics.pinkyStraight.dipAngle
             ],
-            thumbHorizontal: metrics.thumbHorizontal,
-            thumbVertical: metrics.thumbVertical,
+            thumbLateral: metrics.thumbLateral,
+            thumbForward: metrics.thumbForward,
             wristX,
             wristY
         };

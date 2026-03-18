@@ -437,6 +437,22 @@ function getBodyFrame(results) {
     return { center, scale };
 }
 
+function thumbMetricsInHandFrame(wrist, indexMcp, middleMcp, thumbTip, handScale) {
+    const upXRaw = middleMcp.x - wrist.x;
+    const upYRaw = middleMcp.y - wrist.y;
+    const upLength = Math.hypot(upXRaw, upYRaw) || 1;
+    const upX = upXRaw / upLength;
+    const upY = upYRaw / upLength;
+    const sideX = -upY;
+    const sideY = upX;
+    const thumbVecX = thumbTip.x - indexMcp.x;
+    const thumbVecY = thumbTip.y - indexMcp.y;
+    return {
+        thumbLateral: Math.abs(((thumbVecX * sideX) + (thumbVecY * sideY)) / handScale),
+        thumbForward: Math.abs(((thumbVecX * upX) + (thumbVecY * upY)) / handScale)
+    };
+}
+
 function scoreProximity(actual, target, tolerance) {
     return clamp01(1 - Math.abs(actual - target) / tolerance);
 }
@@ -504,9 +520,8 @@ function scoreLetterAForHand(results, handLandmarks) {
     ];
     const curledScore = average(fingerCurl.map(item => item.score));
 
-    const thumbHorizontal = Math.abs((thumbTip.x - indexMcp.x) / handScale);
-    const thumbVertical = Math.abs((thumbTip.y - indexMcp.y) / handScale);
-    const thumbScore = (scoreProximity(thumbHorizontal, 0.58, 0.42) * 0.7) + (scoreProximity(thumbVertical, 0.12, 0.28) * 0.3);
+    const { thumbLateral, thumbForward } = thumbMetricsInHandFrame(wrist, indexMcp, middleMcp, thumbTip, handScale);
+    const thumbScore = (scoreProximity(thumbLateral, 0.62, 0.36) * 0.75) + (scoreProximity(thumbForward, 0.14, 0.24) * 0.25);
 
     const bodyFrame = getBodyFrame(results);
     const wristX = (wrist.x - bodyFrame.center.x) / bodyFrame.scale;
@@ -523,8 +538,8 @@ function scoreLetterAForHand(results, handLandmarks) {
             wristX,
             wristY,
             fingerCurl,
-            thumbHorizontal,
-            thumbVertical
+            thumbLateral,
+            thumbForward
         }
     };
 }
