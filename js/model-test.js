@@ -9,7 +9,7 @@ import {
     startCameraStream,
     stopMediaStream,
     describeCameraError
-} from "./sign-model-runtime.js";
+} from "./sign-model-runtime.js?v=20260318-7";
 
 const inputVideo = document.getElementById("input-video");
 const outputCanvas = document.getElementById("output-canvas");
@@ -37,6 +37,10 @@ let predictionInFlight = false;
 let frameCounter = 0;
 let modelState = null;
 let cameraReady = false;
+
+function isImageModel() {
+    return modelState?.model_type === "image";
+}
 
 function formatTime(date) {
     return new Intl.DateTimeFormat([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(date);
@@ -88,13 +92,19 @@ async function updateDiagnostics(extra = {}) {
         },
         {
             label: "Frame buffer",
-            value: `${frameBuffer.length} / ${MAX_SEQUENCE} frames collected for the next inference window.`,
-            badge: `${frameBuffer.length}`,
-            tone: frameBuffer.length >= MAX_SEQUENCE ? "is-good" : "is-neutral"
+            value: isImageModel()
+                ? "Alphabet mode predicts from the current live frame."
+                : `${frameBuffer.length} / ${MAX_SEQUENCE} frames collected for the next inference window.`,
+            badge: isImageModel() ? "Live" : `${frameBuffer.length}`,
+            tone: isImageModel() || frameBuffer.length >= MAX_SEQUENCE ? "is-good" : "is-neutral"
         },
         {
             label: "Inference loop",
-            value: predictionInFlight ? "A prediction request is currently running inside ONNX Runtime Web." : "The browser is ready to run the next sequence.",
+            value: predictionInFlight
+                ? "A prediction request is currently running inside ONNX Runtime Web."
+                : isImageModel()
+                    ? "The browser is ready to classify the current frame."
+                    : "The browser is ready to run the next sequence.",
             badge: predictionInFlight ? "Busy" : "Idle",
             tone: predictionInFlight ? "is-neutral" : "is-good"
         }
@@ -117,13 +127,15 @@ function renderPredictions(predictions) {
 }
 
 async function predictSequence() {
-    if (predictionInFlight || frameBuffer.length < MAX_SEQUENCE || !modelState) {
+    const waitingForSequence = !isImageModel() && frameBuffer.length < MAX_SEQUENCE;
+    if (predictionInFlight || !modelState || waitingForSequence) {
         return;
     }
     predictionInFlight = true;
     await updateDiagnostics();
     try {
-        const result = await predictWithBrowserModel(modelState, frameBuffer);
+        const modelInput = isImageModel() ? inputVideo : frameBuffer;
+        const result = await predictWithBrowserModel(modelState, modelInput);
         const best = result.predictions[0];
         topPredictionLabel.textContent = best ? prettifyLabel(best.label) : "No prediction";
         topPredictionScore.textContent = best ? `Confidence ${Math.round(best.score * 100)}%` : "No confidence available";
@@ -145,7 +157,12 @@ async function checkModel() {
     try {
         modelState = await loadBrowserModel();
         modelStatusTitle.textContent = "Browser model is ready";
-        modelHealthBadge.textContent = `${modelState.num_classes} classes`;
+        modelHealthBadge.textContent = isImageModel()
+            ? `${modelState.num_classes} letters`
+            : `${modelState.num_classes} classes`;
+        topPredictionScore.textContent = isImageModel()
+            ? "Live alphabet classification is ready."
+            : "Need 40 frames before the first inference.";
         await updateDiagnostics();
     } catch (error) {
         console.error(error);
@@ -168,11 +185,13 @@ function stopLoop() {
 
 function processResults(results) {
     drawHolisticResults(canvasCtx, outputCanvas, inputVideo, results);
-    frameBuffer.push(featureVectorFromResults(results));
-    if (frameBuffer.length > MAX_SEQUENCE) {
-        frameBuffer.shift();
+    if (!isImageModel()) {
+        frameBuffer.push(featureVectorFromResults(results));
+        if (frameBuffer.length > MAX_SEQUENCE) {
+            frameBuffer.shift();
+        }
     }
-    bufferedFrames.textContent = `${frameBuffer.length}`;
+    bufferedFrames.textContent = isImageModel() ? "Live" : `${frameBuffer.length}`;
     frameCounter += 1;
     cameraReady = true;
     cameraState.textContent = "Camera is live";
@@ -229,11 +248,17 @@ retryCameraBtn.addEventListener("click", () => {
 
 resetBufferBtn.addEventListener("click", async () => {
     frameBuffer = [];
-    bufferedFrames.textContent = "0";
-    topPredictionLabel.textContent = "Waiting for frames";
-    topPredictionScore.textContent = "Need 40 frames before the first inference.";
+    bufferedFrames.textContent = isImageModel() ? "Live" : "0";
+    topPredictionLabel.textContent = isImageModel() ? "Waiting for camera" : "Waiting for frames";
+    topPredictionScore.textContent = isImageModel()
+        ? "Live alphabet prediction updates from the current frame."
+        : "Need 40 frames before the first inference.";
     predictionList.innerHTML = "";
-    await updateDiagnostics({ summary: "The sequence buffer was cleared. Hold a sign steady to collect a new 40-frame window." });
+    await updateDiagnostics({
+        summary: isImageModel()
+            ? "Alphabet mode does not use a sequence buffer. The next live frame will be classified automatically."
+            : "The sequence buffer was cleared. Hold a sign steady to collect a new 40-frame window."
+    });
 });
 
 window.addEventListener("beforeunload", () => {

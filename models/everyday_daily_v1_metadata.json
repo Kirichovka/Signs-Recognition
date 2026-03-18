@@ -1,4 +1,5 @@
 {
+  "model_type": "sequence",
   "model_name": "best_model.pt",
   "onnx_name": "everyday_daily_v1.onnx",
   "num_classes": 40,

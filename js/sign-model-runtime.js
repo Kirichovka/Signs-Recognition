@@ -4,6 +4,8 @@ const DEFAULT_MODEL_NAME = "everyday_daily_v1";
 const ORT_WASM_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
 
 let cachedModel = null;
+const imagePreprocessCanvas = document.createElement("canvas");
+const imagePreprocessCtx = imagePreprocessCanvas.getContext("2d", { willReadFrequently: true });
 
 function resolveRequestedModelName() {
     const params = new URLSearchParams(window.location.search);
@@ -60,6 +62,7 @@ export async function loadBrowserModel() {
 
     cachedModel = {
         ...metadata,
+        model_type: metadata.model_type || (metadata.sequence_length ? "sequence" : metadata.image_size ? "image" : "sequence"),
         requested_model_name: modelName,
         session,
         inputName: session.inputNames[0],
@@ -68,7 +71,13 @@ export async function loadBrowserModel() {
     return cachedModel;
 }
 
-export async function predictWithBrowserModel(model, sequence) {
+function buildSequenceTensor(model, sequence) {
+    if (!Number.isFinite(model.sequence_length)) {
+        throw new Error("Sequence model metadata is missing sequence_length.");
+    }
+    if (!Number.isFinite(model.feature_size)) {
+        throw new Error("Sequence model metadata is missing feature_size.");
+    }
     if (sequence.length !== model.sequence_length) {
         throw new Error(`Expected ${model.sequence_length} frames, got ${sequence.length}.`);
     }
@@ -81,8 +90,73 @@ export async function predictWithBrowserModel(model, sequence) {
         }
         flattened.set(frame, frameIndex * model.feature_size);
     }
+    return new globalThis.ort.Tensor("float32", flattened, [1, model.sequence_length, model.feature_size]);
+}
 
-    const tensor = new globalThis.ort.Tensor("float32", flattened, [1, model.sequence_length, model.feature_size]);
+function buildImageTensor(model, imageSource) {
+    const imageSize = Number(model.image_size);
+    const inputChannels = Number(model.input_channels || 3);
+    if (!Number.isFinite(imageSize)) {
+        throw new Error("Image model metadata is missing image_size.");
+    }
+    if (!imageSource) {
+        throw new Error("Image model prediction requires an image source.");
+    }
+
+    imagePreprocessCanvas.width = imageSize;
+    imagePreprocessCanvas.height = imageSize;
+
+    const width = imageSource.videoWidth || imageSource.naturalWidth || imageSource.width;
+    const height = imageSource.videoHeight || imageSource.naturalHeight || imageSource.height;
+    if (!width || !height) {
+        throw new Error("Image source is not ready yet.");
+    }
+
+    const cropSize = Math.min(width, height);
+    const offsetX = (width - cropSize) / 2;
+    const offsetY = (height - cropSize) / 2;
+
+    imagePreprocessCtx.save();
+    imagePreprocessCtx.clearRect(0, 0, imageSize, imageSize);
+    imagePreprocessCtx.translate(imageSize, 0);
+    imagePreprocessCtx.scale(-1, 1);
+    imagePreprocessCtx.drawImage(
+        imageSource,
+        offsetX,
+        offsetY,
+        cropSize,
+        cropSize,
+        0,
+        0,
+        imageSize,
+        imageSize
+    );
+    imagePreprocessCtx.restore();
+
+    const { data } = imagePreprocessCtx.getImageData(0, 0, imageSize, imageSize);
+    const flattened = new Float32Array(inputChannels * imageSize * imageSize);
+    const pixelCount = imageSize * imageSize;
+    for (let pixelIndex = 0; pixelIndex < pixelCount; pixelIndex += 1) {
+        const sourceIndex = pixelIndex * 4;
+        flattened[pixelIndex] = data[sourceIndex] / 255;
+        if (inputChannels > 1) {
+            flattened[pixelIndex + pixelCount] = data[sourceIndex + 1] / 255;
+        }
+        if (inputChannels > 2) {
+            flattened[pixelIndex + pixelCount * 2] = data[sourceIndex + 2] / 255;
+        }
+    }
+    return new globalThis.ort.Tensor("float32", flattened, [1, inputChannels, imageSize, imageSize]);
+}
+
+export async function predictWithBrowserModel(model, input) {
+    let tensor;
+    if (model.model_type === "image") {
+        tensor = buildImageTensor(model, input);
+    } else {
+        tensor = buildSequenceTensor(model, input);
+    }
+
     const outputs = await model.session.run({ [model.inputName]: tensor });
     const logitsTensor = outputs[model.outputName];
     const logits = Array.from(logitsTensor.data);
@@ -96,8 +170,10 @@ export async function predictWithBrowserModel(model, sequence) {
     return {
         predictions,
         logits,
+        model_type: model.model_type,
         sequence_length: model.sequence_length,
-        feature_size: model.feature_size
+        feature_size: model.feature_size,
+        image_size: model.image_size
     };
 }
 

@@ -9,7 +9,7 @@ import {
     prettifyLabel,
     startCameraStream,
     stopMediaStream
-} from "./sign-model-runtime.js";
+} from "./sign-model-runtime.js?v=20260318-7";
 
 const HOLD_SECONDS = 1.0;
 const SCORE_THRESHOLD = 0.45;

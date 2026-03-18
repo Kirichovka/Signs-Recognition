@@ -1,4 +1,5 @@
 {
+  "model_type": "image",
   "model_name": "best_model.pt",
   "onnx_name": "alphabet_v1.onnx",
   "num_classes": 24,

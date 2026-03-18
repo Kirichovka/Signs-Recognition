@@ -53,6 +53,7 @@ def main() -> int:
     )
 
     metadata = {
+        "model_type": "image",
         "model_name": checkpoint_path.name,
         "onnx_name": output_path.name,
         "num_classes": checkpoint["num_classes"],
