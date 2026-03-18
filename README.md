@@ -1,67 +1,67 @@
 # ASL Browser Trainer
 
-Интерактивный тренажёр жестов на базе MediaPipe Holistic и `onnxruntime-web`.
+Interactive sign-practice project built with MediaPipe Holistic and `onnxruntime-web`.
 
-Проект больше не зависит от Python-бэкенда для веб-интерфейса: текущая модель запускается прямо в браузере. Это позволяет хостить сайт как обычный статический проект на GitHub Pages, Netlify или через локальный `http.server`.
+The current web UI no longer depends on a Python backend. The trained sign model now runs directly in the browser, which means the app can be hosted as a static site on GitHub Pages, Netlify, or a local `http.server`.
 
-## Что сейчас есть
+## Current features
 
-- браузерный тренажёр с целевым знаком, прогрессом удержания, подсказками и диагностикой камеры
-- отдельная страница live-теста модели
-- экспортированная ONNX-модель в репозитории
-- Python pipeline для подготовки датасета, extraction landmark-фич, обучения GRU-модели и экспорта в ONNX
-- curated label set для бытовых ASL-знаков
+- browser-based sign trainer with target signs, hold progress, coaching, and camera diagnostics
+- standalone live model test page
+- ONNX model stored in the repository
+- Python training pipeline for manifests, subset preparation, landmark feature extraction, GRU training, and ONNX export
+- curated label set for practical everyday ASL signs
 
-Текущая встроенная модель:
+Current embedded model:
 
-- файл: [`models/asl_citizen_50.onnx`](/D:/Integration-Game/gesture-trainer-web/models/asl_citizen_50.onnx)
+- model file: [`models/asl_citizen_50.onnx`](/D:/Integration-Game/gesture-trainer-web/models/asl_citizen_50.onnx)
 - metadata: [`models/asl_citizen_50_metadata.json`](/D:/Integration-Game/gesture-trainer-web/models/asl_citizen_50_metadata.json)
-- источник: baseline, обученный на `ASL Citizen` subset из `50` классов
+- source: baseline trained on an `ASL Citizen` subset with `50` classes
 
-## Быстрый старт
+## Quick start
 
-### Веб-версия
+### Web version
 
 ```powershell
 cd D:\Integration-Game\gesture-trainer-web
 python -m http.server 4174
 ```
 
-Открыть:
+Open:
 
 - `http://127.0.0.1:4174/`
 - `http://127.0.0.1:4174/model-test.html`
 
-### Что открывать
+### Which page to use
 
-- `index.html` — основной trainer с целевыми знаками, подсказками, удержанием и коучингом
-- `model-test.html` — минимальная страница для проверки модели, камеры и top-predictions
+- `index.html` - main trainer with target signs, hold logic, coaching, and diagnostics
+- `model-test.html` - lightweight page for camera checks and raw top predictions
 
-## Текущая архитектура
+## Current architecture
 
-### В браузере
+### In the browser
 
-- `index.html` и `model-test.html` загружают:
+- `index.html` and `model-test.html` load:
   - `onnxruntime-web`
   - MediaPipe Holistic
-  - локальные JS-модули из [`js`](/D:/Integration-Game/gesture-trainer-web/js)
-- камера и landmarks обрабатываются на клиенте
-- landmark-последовательность длиной `40` кадров подаётся в ONNX-модель
-- top predictions считаются прямо в браузере
+  - local JS modules from [`js`](/D:/Integration-Game/gesture-trainer-web/js)
+- camera capture and landmark extraction run on the client
+- a `40`-frame landmark sequence is sent into the ONNX model
+- top predictions are computed directly in the browser
 
-### В Python
+### In Python
 
-Python сейчас нужен для:
+Python is now used for:
 
-- подготовки dataset manifests
-- построения subset по explicit label list
-- extraction features из видео
-- обучения модели
-- экспорта PyTorch checkpoint в ONNX
+- dataset manifest creation
+- subset selection from explicit label lists
+- video feature extraction
+- model training
+- exporting PyTorch checkpoints to ONNX
 
-Локальный FastAPI-бэкенд всё ещё лежит в проекте как вспомогательный инструмент, но для веб-интерфейса он больше не обязателен.
+The local FastAPI backend is still included as a helper tool, but it is no longer required for the browser UI.
 
-## Структура проекта
+## Project structure
 
 ```text
 gesture-trainer-web/
@@ -91,50 +91,50 @@ gesture-trainer-web/
     TROUBLESHOOTING.md
 ```
 
-## Основные файлы
+## Key files
 
 - [`js/sign-model-runtime.js`](/D:/Integration-Game/gesture-trainer-web/js/sign-model-runtime.js)  
-  Общий runtime для browser inference: загрузка ONNX, softmax, нормализация landmarks, сбор feature vectors, запуск модели, работа с камерой.
+  Shared browser runtime for ONNX loading, softmax, landmark normalization, feature-vector generation, inference, and camera startup.
 
 - [`js/gesture-trainer.js`](/D:/Integration-Game/gesture-trainer-web/js/gesture-trainer.js)  
-  Основной trainer UI: целевые знаки, hold progress, коучинг по видимости, zone checking, guide card, диагностическая панель.
+  Main trainer UI: target-sign flow, hold progress, visibility coaching, zone checking, guide card, and diagnostics.
 
 - [`js/model-test.js`](/D:/Integration-Game/gesture-trainer-web/js/model-test.js)  
-  Упрощённый тест модели без механики тренировки.
+  Minimal live test page without the full training loop.
 
 - [`python/train_sign_model.py`](/D:/Integration-Game/gesture-trainer-web/python/train_sign_model.py)  
-  Обучение GRU-классификатора на landmark-последовательностях.
+  GRU-based classifier training on landmark sequences.
 
 - [`python/export_sign_model_onnx.py`](/D:/Integration-Game/gesture-trainer-web/python/export_sign_model_onnx.py)  
-  Экспорт чекпойнта в ONNX + metadata JSON для браузера.
+  Export utility for converting a trained checkpoint into ONNX and browser metadata.
 
 - [`python/label_sets/asl_citizen_daily_v1.txt`](/D:/Integration-Game/gesture-trainer-web/python/label_sets/asl_citizen_daily_v1.txt)  
-  Подготовленный список бытовых ASL-знаков для следующего curated training run.
+  Curated list of practical everyday ASL labels for the next training run.
 
-## Текущий статус модели
+## Current model status
 
-Базовый результат, который уже был обучен:
+Baseline result that has already been trained:
 
-- датасет: `ASL Citizen`
-- subset: `50` классов
-- объём: `1901` видео
-- extracted features shape: `(1901, 40, 154)`
-- baseline validation accuracy: примерно `56.35%`
+- dataset: `ASL Citizen`
+- subset size: `50` classes
+- total videos: `1901`
+- extracted feature shape: `(1901, 40, 154)`
+- baseline validation accuracy: about `56.35%`
 
-Что это значит:
+What that means:
 
-- pipeline рабочий
-- модель пригодна как prototype / demo baseline
-- качество ещё не production-level
-- для более стабильной UX лучше переходить на curated everyday subset и/или уменьшать количество конфликтующих классов
+- the pipeline works end to end
+- the model is good enough for a prototype and demo baseline
+- the quality is still below production-grade recognition
+- a curated everyday subset and/or fewer conflicting classes should improve usability
 
 ## Curated everyday labels
 
-Для следующего запуска уже подготовлен curated everyday set:
+Prepared label set for the next training run:
 
 - [`python/label_sets/asl_citizen_daily_v1.txt`](/D:/Integration-Game/gesture-trainer-web/python/label_sets/asl_citizen_daily_v1.txt)
 
-Он содержит `40` практичных знаков:
+It contains `40` practical signs:
 
 - `HELLO`
 - `BYE`
@@ -177,20 +177,20 @@ gesture-trainer-web/
 - `GOAHEAD`
 - `GREAT`
 
-Важно:
+Important note:
 
-- буквы пока не смешиваются с этой моделью
-- по буквам в доступных данных мало примеров, поэтому алфавит лучше учить отдельным экспериментом или на отдельном датасете
+- letters are intentionally not mixed into this model yet
+- alphabet classes currently have too few examples in the available data, so letter recognition should be trained separately
 
-## Локальный Python backend
+## Optional local Python backend
 
-Хотя веб-интерфейс уже работает без backend, локальный FastAPI-сервер всё ещё можно поднять для:
+Even though the web app now works without a backend, the local FastAPI server is still useful for:
 
-- smoke tests старого API
-- отладки PyTorch checkpoint без экспорта в ONNX
-- локальной проверки `/api/health` и `/api/predict`
+- smoke-testing an old API flow
+- debugging a raw PyTorch checkpoint before ONNX export
+- checking `/api/health` and `/api/predict` locally
 
-Пример:
+Example:
 
 ```powershell
 cd D:\Integration-Game\gesture-trainer-web\python
@@ -200,53 +200,53 @@ pip install -r requirements.txt
 uvicorn local_inference_server:app --host 127.0.0.1 --port 8000
 ```
 
-Но для обычного использования сайта это уже не нужно.
+That server is optional for normal website use.
 
-## Подробная документация
+## Detailed documentation
 
 - [Architecture](./docs/ARCHITECTURE.md)
 - [Training Pipeline](./docs/TRAINING_PIPELINE.md)
 - [Troubleshooting](./docs/TROUBLESHOOTING.md)
 
-## Краткий workflow для переобучения
+## Short retraining workflow
 
-1. Скачать и распаковать `ASL Citizen`
-2. Построить полный manifest
-3. Собрать subset через `prepare_wlasl_subset.py`
-4. Извлечь features через `extract_sign_features.py`
-5. Обучить модель через `train_sign_model.py`
-6. Экспортировать checkpoint в ONNX через `export_sign_model_onnx.py`
-7. Подменить файлы в `models/`
-8. Перезапустить или заново открыть статический сайт
+1. Download and extract `ASL Citizen`
+2. Build the full manifest
+3. Create a subset with `prepare_wlasl_subset.py`
+4. Extract features with `extract_sign_features.py`
+5. Train a model with `train_sign_model.py`
+6. Export the checkpoint to ONNX with `export_sign_model_onnx.py`
+7. Replace the files in `models/`
+8. Reload the static website
 
-Полные команды и пояснения лежат в [Training Pipeline](./docs/TRAINING_PIPELINE.md).
+Full commands and explanations are in [Training Pipeline](./docs/TRAINING_PIPELINE.md).
 
-## Ограничения
+## Known limitations
 
-- текущая встроенная модель всё ещё baseline
-- многие похожие знаки путаются
-- качество сильно зависит от устойчивой видимости корпуса, рук и лица
-- для words-only модели нельзя автоматически ожидать хорошее распознавание букв
-- GitHub Pages и Netlify подходят только для статической browser inference версии, но не для Python inference
+- the current embedded model is still a baseline
+- many visually similar signs can still be confused
+- recognition quality depends heavily on stable visibility of hands, upper body, and face
+- a words-only model should not be expected to handle alphabet recognition well
+- GitHub Pages and Netlify are suitable for the browser ONNX version, but not for Python inference
 
-## Развёртывание
+## Deployment
 
-Подходит любой статический хостинг:
+Any static host is fine:
 
 - GitHub Pages
 - Netlify
-- Vercel static
-- локальный `python -m http.server`
+- Vercel static hosting
+- local `python -m http.server`
 
-Главное условие:
+Requirements:
 
-- сайт должен иметь доступ к файлам из `models/`
-- браузер должен разрешать камеру
-- страница должна загружать CDN-зависимости `onnxruntime-web` и MediaPipe Holistic
+- the site must be able to serve the files in `models/`
+- the browser must be allowed to access the camera
+- CDN dependencies for `onnxruntime-web` and MediaPipe Holistic must load correctly
 
-## Полезные заметки
+## Useful notes
 
-- если на странице `404` по `/api/health`, значит открыт старый backend-ориентированный URL или старый закэшированный build
-- если камера даёт `NotFoundError`, нужно проверить разрешения браузера, выбрать реальное устройство и освободить камеру от Zoom/Discord/OBS
-- если Python extraction падает на `libGL.so.1`, нужно установить системный пакет `libgl1`
+- if you see `404` on `/api/health`, you are probably opening an old backend-oriented page or a cached build
+- if the camera throws `NotFoundError`, check browser permissions, the selected device, and whether another app is using the camera
+- if Python feature extraction fails with `libGL.so.1`, install the `libgl1` system package on Linux
 

@@ -1,52 +1,52 @@
 # Training Pipeline
 
-## 1. Цель
+## 1. Goal
 
-Этот документ описывает полный workflow обучения новой модели:
+This document describes the full workflow for training a new model:
 
-1. скачать датасет
-2. построить manifest
-3. отобрать subset
-4. извлечь landmark features
-5. обучить PyTorch-модель
-6. экспортировать модель в ONNX
-7. подменить browser model в проекте
+1. download the dataset
+2. build a manifest
+3. select a subset
+4. extract landmark features
+5. train a PyTorch model
+6. export the model to ONNX
+7. replace the browser model files in the project
 
-Основной рекомендуемый датасет сейчас:
+The main recommended dataset right now is:
 
 - `ASL Citizen`
 
-Почему:
+Why:
 
-- единый официальный архив
-- меньше проблем, чем у WLASL со старыми внешними ссылками
-- подходит для isolated sign recognition
+- one official archive
+- fewer reliability problems than WLASL external links
+- well suited to isolated sign recognition
 
-## 2. Требования
+## 2. Requirements
 
-### 2.1 Локально
+### 2.1 Local environment
 
 - Python `3.10+`
 - `pip`
 - `venv`
 
-### 2.2 На Linux GPU-сервере
+### 2.2 Linux GPU server
 
-Минимально полезно:
+Reasonable minimum:
 
 - NVIDIA GPU
 - `4+ CPU`
 - `16+ GB RAM`
-- достаточно диска для архива, распаковки и features
+- enough disk space for the archive, extracted videos, features, and checkpoints
 
-Для OpenCV на Ubuntu может понадобиться:
+For OpenCV on Ubuntu, you may also need:
 
 ```bash
 sudo apt update
 sudo apt install -y unzip libgl1 libglib2.0-0
 ```
 
-## 3. Установка Python dependencies
+## 3. Install Python dependencies
 
 ```bash
 cd ~/workspace/Signs-Recognition/python
@@ -56,7 +56,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-## 4. Скачать ASL Citizen
+## 4. Download ASL Citizen
 
 ```bash
 mkdir -p ~/workspace/datasets/asl_citizen
@@ -65,7 +65,7 @@ wget https://download.microsoft.com/download/b/8/8/b88c0bae-e6c1-43e1-8726-98cf5
 unzip -q ASL_Citizen.zip
 ```
 
-Ожидаемая структура:
+Expected structure:
 
 ```text
 ~/workspace/datasets/asl_citizen/
@@ -75,7 +75,7 @@ unzip -q ASL_Citizen.zip
     videos/
 ```
 
-## 5. Построить manifest
+## 5. Build the manifest
 
 ```bash
 cd ~/workspace/Signs-Recognition/python
@@ -86,15 +86,15 @@ python build_asl_citizen_manifest.py \
   --output ~/workspace/datasets/asl_citizen/asl_citizen_manifest.jsonl
 ```
 
-Этот шаг:
+This step:
 
-- читает официальные split CSV
-- нормализует пути к видео
-- пишет JSONL manifest
+- reads the official split CSV files
+- resolves video paths
+- writes a JSONL manifest
 
-## 6. Собрать subset
+## 6. Create a subset
 
-### 6.1 Автовыбор top classes
+### 6.1 Automatic top-class selection
 
 ```bash
 python prepare_wlasl_subset.py \
@@ -107,9 +107,9 @@ python prepare_wlasl_subset.py \
   --max-val-per-class 20
 ```
 
-### 6.2 Curated subset по explicit labels
+### 6.2 Curated subset from an explicit label list
 
-Для everyday signs:
+For practical everyday signs:
 
 ```bash
 python prepare_wlasl_subset.py \
@@ -121,14 +121,14 @@ python prepare_wlasl_subset.py \
   --max-val-per-class 30
 ```
 
-Важно:
+Important note:
 
-- если в самих данных у знака только `30` примеров, большие лимиты не помогут
-- лимиты — это потолок, а не гарантированный размер класса
+- if the dataset only contains about `30` samples for a sign, larger caps will not produce more data
+- the limits are upper bounds, not guaranteed class sizes
 
-## 7. Проверить размер subset
+## 7. Inspect subset size
 
-Пример:
+Example:
 
 ```bash
 python - <<'PY'
@@ -145,7 +145,7 @@ for item in data['classes']:
 PY
 ```
 
-## 8. Извлечь features
+## 8. Extract features
 
 ```bash
 python extract_sign_features.py \
@@ -154,19 +154,19 @@ python extract_sign_features.py \
   --max-frames 40
 ```
 
-Что делает extraction:
+What extraction does:
 
-- открывает каждое видео
-- прогоняет кадры через MediaPipe Holistic
-- берёт:
-  - левую руку
-  - правую руку
-  - верхнюю часть pose landmarks
-- нормализует координаты
-- собирает fixed-length sequence
-- сохраняет `.npz`
+- opens each video
+- runs frames through MediaPipe Holistic
+- collects:
+  - left hand
+  - right hand
+  - upper pose landmarks
+- normalizes the coordinates
+- builds a fixed-length sequence
+- saves everything into an `.npz`
 
-Результат:
+Result contents:
 
 - `sequences`
 - `labels`
@@ -174,7 +174,7 @@ python extract_sign_features.py \
 - `label_names`
 - `feature_size`
 
-## 9. Проверить feature-файл
+## 9. Check the feature file
 
 ```bash
 python - <<'PY'
@@ -190,9 +190,9 @@ print('feature_size =', int(data['feature_size'][0]))
 PY
 ```
 
-## 10. Обучить модель
+## 10. Train the model
 
-Пример baseline:
+Example baseline:
 
 ```bash
 python train_sign_model.py \
@@ -203,12 +203,12 @@ python train_sign_model.py \
   --hidden-size 192
 ```
 
-Ожидаемые выходы:
+Expected outputs:
 
 - `best_model.pt`
 - `training_metrics.json`
 
-## 11. Проверить метрики
+## 11. Check the metrics
 
 ```bash
 python - <<'PY'
@@ -222,7 +222,7 @@ print('last_epoch =', data['history'][-1])
 PY
 ```
 
-## 12. Экспортировать в ONNX
+## 12. Export to ONNX
 
 ```bash
 python export_sign_model_onnx.py \
@@ -233,66 +233,66 @@ python export_sign_model_onnx.py \
   --top-k 5
 ```
 
-Что создаётся:
+This creates:
 
-- `.onnx` файл
-- `.json` metadata с `label_names`, `feature_size`, `sequence_length`
+- the `.onnx` model file
+- a metadata `.json` file containing `label_names`, `feature_size`, and `sequence_length`
 
-## 13. Подменить браузерную модель
+## 13. Replace the browser model
 
-Сейчас runtime ссылается на:
+The current runtime points to:
 
 - `models/asl_citizen_50.onnx`
 - `models/asl_citizen_50_metadata.json`
 
-Есть два пути:
+You have two options:
 
-### Вариант A. Заменить существующие файлы
+### Option A. Replace the existing files
 
-- оставить те же имена
-- просто положить новые версии поверх старых
+- keep the same names
+- overwrite the old model and metadata
 
-### Вариант B. Добавить новую модель и сменить ссылки в runtime
+### Option B. Add a new model and update runtime references
 
-Поменять пути в:
+Update the paths in:
 
 - [`js/sign-model-runtime.js`](/D:/Integration-Game/gesture-trainer-web/js/sign-model-runtime.js)
 
-Этот путь чище, если нужно держать несколько моделей.
+This is cleaner if you want to keep multiple model versions.
 
-## 14. Почему лучше не смешивать буквы и бытовые слова сразу
+## 14. Why letters should not be mixed into the first everyday model
 
-Практический вывод по данным:
+Practical conclusion from the available data:
 
-- буквенные классы встречаются редко
-- бытовые слова и буквы образуют разные по сложности задачи
-- смешивание обычно ухудшает первую модель
+- alphabet classes have too few examples
+- everyday words and letters are different recognition problems
+- mixing them usually weakens the first model
 
-Рекомендуемая стратегия:
+Recommended strategy:
 
-- модель 1: бытовые слова
-- модель 2: буквы / fingerspelling
+- model 1: everyday words
+- model 2: letters or fingerspelling
 
-## 15. Практические рекомендации
+## 15. Practical recommendations
 
-### Если мало времени
+### If time is limited
 
-- не гнаться сразу за `100+` классами
-- сначала обучить `20-50` полезных знаков
-- проверить confusion pairs
-- только потом расширять словарь
+- do not jump straight to `100+` classes
+- start with `20-50` useful signs
+- inspect confusion pairs
+- only then expand the vocabulary
 
-### Если данных мало на класс
+### If classes have too few samples
 
-- лучше уменьшить число классов
-- чем держать много очень похожих классов с `~30` видео
+- reduce the number of classes
+- instead of keeping many highly similar classes with only about `30` videos each
 
-### Если inference в браузере кажется слабым
+### If browser inference feels weak
 
-Проверить:
+Check:
 
-- совпадает ли sequence length с metadata
-- используется ли правильный ONNX и metadata JSON
-- не осталось ли старое имя модели в runtime
-- не открыт ли сайт из кэша
+- whether the sequence length matches the metadata
+- whether the ONNX file and metadata belong to the same model
+- whether the runtime still points to an old model path
+- whether the browser is using a cached build
 

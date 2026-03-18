@@ -1,197 +1,196 @@
 # Troubleshooting
 
-## 1. Камера не запускается в браузере
+## 1. The camera does not start in the browser
 
-### Симптом
+### Symptoms
 
 - `NotFoundError: Requested device not found`
 - `Camera stream is not ready yet`
-- trainer зависает в состоянии `Waiting`
+- the trainer stays in a waiting state
 
-### Что проверить
+### What to check
 
-1. Разрешение камеры в браузере:
-   - иконка слева от адреса
-   - `Camera -> Allow`
+1. Camera permission in the browser:
+   - click the icon next to the address bar
+   - set `Camera -> Allow`
 
-2. Не занята ли камера:
+2. Make sure the camera is not busy in another app:
    - Zoom
    - Discord
    - OBS
    - Teams
    - Windows Camera
 
-3. Открыт ли сайт по реальному адресу, а не старому табу/кэшу
+3. Make sure you are opening the current page, not an old cached tab
 
-4. Поддерживает ли устройство выбранные constraints
+4. Verify that the selected device supports the requested camera constraints
 
-### Что уже сделано в коде
+### What the code already does
 
-В runtime добавлены fallback-попытки:
+The runtime now includes fallback attempts:
 
 - explicit `deviceId`
 - `facingMode: "user"`
-- video без `facingMode`
-- `video: true`
+- video without `facingMode`
+- plain `video: true`
 
-Если даже после этого ошибка остаётся, проблема почти наверняка вне JS-логики:
+If the error still remains after that, the problem is probably outside the JS logic:
 
-- права браузера
-- устройство камеры
-- драйвер
-- камера занята другой программой
+- browser permissions
+- the camera device itself
+- drivers
+- another app using the camera
 
-## 2. GitHub Pages открывается, но `/api/health` даёт 404
+## 2. GitHub Pages opens, but `/api/health` returns 404
 
-### Причина
+### Cause
 
-Открыта старая схема, рассчитанная на Python backend.
+You are opening an older backend-oriented flow.
 
-### Решение
+### Fix
 
-Использовать текущую browser-only версию.
+Use the current browser-only version.
 
-Актуальная архитектура:
+The current architecture does not require:
 
-- нет обязательного `/api/health`
-- нет обязательного `/api/predict`
-- inference идёт в браузере
+- `/api/health`
+- `/api/predict`
 
-Если видишь 404 на `/api/health`, значит:
+If you still see 404 on `/api/health`, it usually means:
 
-- открыт старый URL
-- или старая закэшированная версия JS
+- you opened an old URL
+- or the browser loaded a cached build
 
-Сделай:
+Try:
 
 - `Ctrl+F5`
-- открой новую вкладку
-- проверь, что загрузился актуальный build
+- opening the page in a fresh tab
+- verifying that the latest JS bundle is loaded
 
-## 3. Серверный extraction падает с `libGL.so.1`
+## 3. Server-side extraction fails with `libGL.so.1`
 
-### Симптом
+### Symptom
 
 ```text
 ImportError: libGL.so.1: cannot open shared object file
 ```
 
-### Решение
+### Fix
 
-На Ubuntu:
+On Ubuntu:
 
 ```bash
 sudo apt update
 sudo apt install -y libgl1 libglib2.0-0
 ```
 
-## 4. На сервере нет `unzip`
+## 4. `unzip` is missing on the server
 
-### Решение
+### Fix
 
 ```bash
 sudo apt update
 sudo apt install -y unzip
 ```
 
-## 5. WLASL downloader даёт много `Unsuccessful downloading`
+## 5. WLASL downloader shows many `Unsuccessful downloading` errors
 
-### Причина
+### Cause
 
-Это нормальная проблема старого WLASL workflow:
+This is a normal problem with the older WLASL workflow:
 
-- часть ссылок устарела
-- часть видео были на внешних сайтах
-- часть ссылок вела на `swf` или мёртвые ресурсы
+- some links are outdated
+- some videos depended on third-party hosts
+- some entries point to `swf` or dead resources
 
-### Практическое решение
+### Practical fix
 
-Использовать `ASL Citizen` как основной датасет для быстрых и надёжных train runs.
+Use `ASL Citizen` as the primary dataset for fast and reliable training runs.
 
-## 6. Модель в браузере грузится, но качество кажется слабым
+## 6. The browser model loads, but recognition quality feels weak
 
-### Возможные причины
+### Possible reasons
 
-- baseline accuracy ограничена качеством исходной модели
-- в текущем наборе слишком много конфликтующих классов
-- пользователь делает знак не в той зоне
-- камера плохо видит лицо/корпус/руки
-- модель и metadata не совпадают
+- the baseline model itself is still limited
+- the current class set contains too many conflicting signs
+- the user performs the sign in the wrong zone
+- the camera does not capture hands, torso, or face clearly enough
+- the model and metadata files do not match
 
-### Что делать
+### What to do
 
-1. Проверить, что `.onnx` и metadata относятся к одной и той же модели
-2. Проверить coaching/diagnostics на странице
-3. Попробовать curated subset с более бытовыми и визуально различимыми знаками
-4. Уменьшить число классов
+1. Verify that the `.onnx` file and metadata belong to the same training run
+2. Check the live coaching and diagnostics on the page
+3. Try a curated subset with more practical and visually distinct signs
+4. Reduce the number of classes
 
-## 7. Почему большие лимиты в subset не увеличивают число видео
+## 7. Larger subset caps do not increase the number of videos
 
-### Пример
+### Example
 
-Указано:
+You set:
 
 - `--max-train-per-class 120`
 - `--max-val-per-class 30`
 
-Но по факту получается только около `30` видео на класс.
+But you still get only around `30` videos for many classes.
 
-### Причина
+### Cause
 
-В самих данных для этого знака больше нет примеров.
+The dataset does not contain more examples for those signs.
 
-Лимиты в `prepare_wlasl_subset.py`:
+The limits in `prepare_wlasl_subset.py`:
 
-- обрезают сверху
-- но не создают новые данные
+- cap class size from above
+- but they do not create more data
 
-## 8. Почему буквы пока не входят в everyday-модель
+## 8. Why letters are not included in the current everyday model
 
-### Причина
+### Cause
 
-- по буквам мало примеров
-- часть букв отсутствует как хороший полноценный класс
-- смешивание букв с everyday words почти наверняка испортит первую модель
+- alphabet classes have too few examples
+- some letters are missing or too weak as standalone classes
+- mixing letters with everyday words would likely weaken the first model
 
-### Что делать
+### Recommended approach
 
-Обучать отдельно:
+Train separately:
 
-- words model
-- alphabet model
+- a words model
+- an alphabet model
 
-## 9. Python backend поднимается, но сайт на GitHub Pages его не видит
+## 9. A Python backend is running locally, but GitHub Pages cannot use it
 
-### Причина
+### Cause
 
-GitHub Pages — это статический хостинг.
+GitHub Pages is static hosting only.
 
-Он не умеет:
+It does not:
 
-- запускать FastAPI
-- выполнять PyTorch inference
-- обслуживать локальный процесс Python как “встроенный backend”
+- run FastAPI
+- run PyTorch inference
+- expose your local Python process as a built-in backend
 
-### Решение
+### Fix
 
-Либо:
+Either:
 
-- использовать browser-only ONNX inference
+- use browser-only ONNX inference
 
-Либо:
+Or:
 
-- держать backend отдельно на сервере
+- host a real backend separately
 
-## 10. Как понять, что текущая страница работает на новой модели
+## 10. How to verify that the website is using the new model
 
-Проверить:
+Check:
 
-- какие label names отображаются
-- какое имя модели/metadata зашито в runtime
-- нет ли старых API-вызовов
-- не закэшировалась ли старая версия JS
+- which label names appear in the UI
+- which model and metadata files are referenced in the runtime
+- whether any old API calls are still present
+- whether the browser is serving a cached version
 
-Полезные точки:
+Useful files:
 
 - [`js/sign-model-runtime.js`](/D:/Integration-Game/gesture-trainer-web/js/sign-model-runtime.js)
 - [`models/asl_citizen_50.onnx`](/D:/Integration-Game/gesture-trainer-web/models/asl_citizen_50.onnx)
