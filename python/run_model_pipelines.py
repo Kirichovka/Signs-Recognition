@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import os
 import subprocess
 import sys
@@ -68,6 +69,20 @@ def send_telegram_notification(bot_token: str, chat_id: str, message: str) -> No
         response.read()
 
 
+def resolve_telegram_credentials(args: argparse.Namespace) -> tuple[str, str]:
+    bot_token = args.telegram_bot_token or os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    chat_id = args.telegram_chat_id or os.environ.get("TELEGRAM_CHAT_ID", "")
+    if not bot_token:
+        bot_token = getpass.getpass("Telegram bot token: ").strip()
+    if not chat_id:
+        chat_id = input("Telegram chat id: ").strip()
+    if not bot_token:
+        raise ValueError("Telegram bot token is required for Telegram notifications.")
+    if not chat_id:
+        raise ValueError("Telegram chat id is required for Telegram notifications.")
+    return bot_token, chat_id
+
+
 def build_summary_message(
     *,
     success: bool,
@@ -104,13 +119,11 @@ def main() -> int:
     word_run_root: Path | None = None
     alphabet_run_root: Path | None = None
     started_at = time.time()
-    telegram_bot_token = args.telegram_bot_token or os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    telegram_chat_id = args.telegram_chat_id or os.environ.get("TELEGRAM_CHAT_ID", "")
+    telegram_bot_token = ""
+    telegram_chat_id = ""
 
-    if args.notify_telegram and (not telegram_bot_token or not telegram_chat_id):
-        raise ValueError(
-            "Telegram notification requires --telegram-bot-token/--telegram-chat-id or TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID."
-        )
+    if args.notify_telegram:
+        telegram_bot_token, telegram_chat_id = resolve_telegram_credentials(args)
 
     try:
         if args.bootstrap_datasets:

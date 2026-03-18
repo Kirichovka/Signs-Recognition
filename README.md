@@ -361,8 +361,6 @@ Telegram notification on success or failure:
 
 ```powershell
 cd D:\Integration-Game\gesture-trainer-web\python
-$env:TELEGRAM_BOT_TOKEN="your_bot_token"
-$env:TELEGRAM_CHAT_ID="your_chat_id"
 python run_model_pipelines.py ^
   --mode all ^
   --word-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_citizen\ASL_Citizen ^
@@ -370,6 +368,8 @@ python run_model_pipelines.py ^
   --export-web ^
   --notify-telegram
 ```
+
+If token and chat id are not passed and are not set in the environment, the launcher will ask for them interactively.
 
 ## Unified model export for web
 

@@ -23,6 +23,7 @@ These can be passed either:
 
 - as command-line flags
 - or through environment variables
+- or entered interactively when the script asks for them
 
 ## Step 1. Create a bot
 
@@ -105,14 +106,16 @@ python run_model_pipelines.py ^
   --telegram-chat-id "your_chat_id"
 ```
 
+### Or let the launcher ask for them
+
+If you pass `--notify-telegram` without token and chat id, the launcher will prompt for both values in the terminal.
+
 ## Step 5. Test message only
 
 You can test Telegram separately before running a training pipeline:
 
 ```powershell
 cd D:\Integration-Game\gesture-trainer-web\python
-$env:TELEGRAM_BOT_TOKEN="your_bot_token"
-$env:TELEGRAM_CHAT_ID="your_chat_id"
 python send_telegram_message.py --message "Test message from gesture-trainer-web"
 ```
 

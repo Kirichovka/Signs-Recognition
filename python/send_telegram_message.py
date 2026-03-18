@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import os
 import urllib.error
@@ -39,9 +40,13 @@ def main() -> int:
     bot_token = args.bot_token or os.environ.get("TELEGRAM_BOT_TOKEN", "")
     chat_id = args.chat_id or os.environ.get("TELEGRAM_CHAT_ID", "")
     if not bot_token:
-        raise ValueError("Telegram bot token is required. Pass --bot-token or set TELEGRAM_BOT_TOKEN.")
+        bot_token = getpass.getpass("Telegram bot token: ").strip()
     if not chat_id:
-        raise ValueError("Telegram chat id is required. Pass --chat-id or set TELEGRAM_CHAT_ID.")
+        chat_id = input("Telegram chat id: ").strip()
+    if not bot_token:
+        raise ValueError("Telegram bot token is required.")
+    if not chat_id:
+        raise ValueError("Telegram chat id is required.")
 
     try:
         result = send_message(bot_token, chat_id, args.message, parse_mode=args.parse_mode)
