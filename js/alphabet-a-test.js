@@ -1,6 +1,5 @@
 import {
     describeCameraError,
-    drawHolisticResults,
     getCameraPermissionState,
     startCameraStream,
     stopMediaStream
@@ -34,6 +33,40 @@ let cameraReady = false;
 let trackedHands = 0;
 let lastCameraError = "";
 let latestDebug = null;
+
+function drawFivePointTracking(results) {
+    outputCanvas.width = inputVideo.videoWidth || 1280;
+    outputCanvas.height = inputVideo.videoHeight || 720;
+
+    canvasCtx.save();
+    canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+    canvasCtx.translate(outputCanvas.width, 0);
+    canvasCtx.scale(-1, 1);
+    canvasCtx.drawImage(results.image, 0, 0, outputCanvas.width, outputCanvas.height);
+
+    const pose = results.poseLandmarks || [];
+    [pose[0], pose[11], pose[12]].filter(Boolean).forEach(point => {
+        canvasCtx.beginPath();
+        canvasCtx.fillStyle = "rgba(251, 113, 133, 0.9)";
+        canvasCtx.arc(point.x * outputCanvas.width, point.y * outputCanvas.height, 5, 0, Math.PI * 2);
+        canvasCtx.fill();
+    });
+
+    [results.leftHandLandmarks, results.rightHandLandmarks].filter(Boolean).forEach(hand => {
+        const sparse = extractSparseHand(hand);
+        if (!sparse) {
+            return;
+        }
+        sparse.forEach((point, index) => {
+            canvasCtx.beginPath();
+            canvasCtx.fillStyle = index === 0 ? "rgba(251, 191, 36, 0.95)" : "rgba(56, 189, 248, 0.95)";
+            canvasCtx.arc(point.x * outputCanvas.width, point.y * outputCanvas.height, index === 0 ? 7 : 6, 0, Math.PI * 2);
+            canvasCtx.fill();
+        });
+    });
+
+    canvasCtx.restore();
+}
 
 function clamp01(value) {
     return Math.max(0, Math.min(1, value));
@@ -221,7 +254,7 @@ function renderBreakdown(debug) {
     items.forEach(item => {
         const row = document.createElement("div");
         row.className = "gesture-check-row";
-        row.innerHTML = `<span>${item.label}</span><span class="gesture-check-badge is-neutral">${item.value} ${item.badge ? `· ${item.badge}` : ""}</span>`;
+        row.innerHTML = `<span>${item.label}</span><span class="gesture-check-badge is-neutral">${item.value}${item.badge ? ` - ${item.badge}` : ""}</span>`;
         scoreBreakdown.appendChild(row);
     });
 }
@@ -310,7 +343,7 @@ function handleScoredFrame(result) {
 }
 
 function onHolisticResults(results) {
-    drawHolisticResults(canvasCtx, outputCanvas, inputVideo, results);
+    drawFivePointTracking(results);
     cameraReady = true;
     cameraState.textContent = "Camera is live";
     handleScoredFrame(scoreLetterA(results));
