@@ -260,6 +260,7 @@ It can:
 - build the full `ASL Citizen` manifest
 - prepare the curated everyday subset
 - optionally merge an extra `MS-ASL` manifest
+- run duplicate video checks on the final manifest
 - run feature extraction
 - train the GRU model
 - export ONNX

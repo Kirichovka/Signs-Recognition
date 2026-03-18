@@ -71,6 +71,16 @@ def parse_args() -> argparse.Namespace:
         help="Skip ONNX export after training.",
     )
     parser.add_argument(
+        "--skip-duplicate-check",
+        action="store_true",
+        help="Skip duplicate video scanning before feature extraction.",
+    )
+    parser.add_argument(
+        "--allow-cross-split-duplicates",
+        action="store_true",
+        help="Do not fail if exact duplicate videos are found across splits.",
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help="Re-run intermediate steps even if output files already exist.",
@@ -102,6 +112,7 @@ def main() -> int:
     subset_stats_path = output_root / f"{args.run_name}_subset_stats.json"
     merged_manifest_path = output_root / f"{args.run_name}_merged_manifest.jsonl"
     merged_stats_path = output_root / f"{args.run_name}_merged_stats.json"
+    duplicate_report_path = output_root / f"{args.run_name}_duplicate_report.json"
     features_path = output_root / f"{args.run_name}_features.npz"
     train_dir = output_root / "training_run"
     onnx_path = output_root / f"{args.run_name}.onnx"
@@ -185,6 +196,21 @@ def main() -> int:
         final_manifest = merged_manifest_path
         final_manifest_stats = merged_stats_path
 
+    if not args.skip_duplicate_check:
+        duplicate_command = [
+            python_exe,
+            str(python_dir / "check_video_duplicates.py"),
+            "--manifest",
+            str(final_manifest),
+            "--output",
+            str(duplicate_report_path),
+        ]
+        if not args.allow_cross_split_duplicates:
+            duplicate_command.append("--fail-on-cross-split")
+        run_step(duplicate_command, cwd=repo_root)
+    else:
+        print("Skipping duplicate video check by request.")
+
     if args.force or not features_path.exists():
         ensure_parent(features_path)
         run_step(
@@ -261,6 +287,7 @@ def main() -> int:
         "subset_manifest": str(subset_manifest_path),
         "final_manifest": str(final_manifest),
         "final_manifest_stats": str(final_manifest_stats),
+        "duplicate_report": "" if args.skip_duplicate_check else str(duplicate_report_path),
         "features": str(features_path),
         "training_dir": str(train_dir),
         "checkpoint": str(checkpoint_path),
@@ -272,6 +299,8 @@ def main() -> int:
         "epochs": args.epochs,
         "batch_size": args.batch_size,
         "hidden_size": args.hidden_size,
+        "skip_duplicate_check": args.skip_duplicate_check,
+        "allow_cross_split_duplicates": args.allow_cross_split_duplicates,
     }
     summary_path.write_text(json.dumps(summary, ensure_ascii=True, indent=2), encoding="utf-8")
 

@@ -9,9 +9,10 @@ The script covers the main sequence:
 1. build the full `ASL Citizen` manifest
 2. create the curated subset
 3. optionally merge extra `MS-ASL` rows
-4. extract landmark features
-5. train the GRU model
-6. export ONNX
+4. run duplicate-video checks
+5. extract landmark features
+6. train the GRU model
+7. export ONNX
 
 ## Pipeline script
 
@@ -24,6 +25,7 @@ The script is designed so that:
 - `ASL Citizen` is the base dataset
 - `MS-ASL` is optional extra training data
 - all outputs are grouped into one run folder
+- duplicate video checks happen automatically before extraction unless explicitly disabled
 
 ## Default curated run
 
@@ -129,6 +131,11 @@ If `MS-ASL` augmentation is enabled, the run folder also contains:
 
 - `--skip-export`
 
+### Duplicate checks
+
+- `--skip-duplicate-check`
+- `--allow-cross-split-duplicates`
+
 ### Re-running
 
 - `--force`  
@@ -154,6 +161,8 @@ Recommended use:
 1. build the subset or merged manifest
 2. run duplicate scanning
 3. only then proceed to extraction and training
+
+The orchestration script now does this automatically by default.
 
 ## Why this script is useful
 
