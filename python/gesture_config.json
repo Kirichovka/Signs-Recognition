@@ -1,0 +1,66 @@
+{
+  "hold_seconds": 1.0,
+  "score_threshold": 0.8,
+  "gestures": [
+    {
+      "id": "open_palm",
+      "title": "Open Palm",
+      "instruction": "Open your hand and stretch all fingers.",
+      "fingers": {
+        "thumb": "open",
+        "index": "open",
+        "middle": "open",
+        "ring": "open",
+        "pinky": "open"
+      }
+    },
+    {
+      "id": "closed_fist",
+      "title": "Closed Fist",
+      "instruction": "Make a gentle fist.",
+      "fingers": {
+        "thumb": "closed",
+        "index": "closed",
+        "middle": "closed",
+        "ring": "closed",
+        "pinky": "closed"
+      }
+    },
+    {
+      "id": "point_up",
+      "title": "Point Up",
+      "instruction": "Lift your index finger and fold the others.",
+      "fingers": {
+        "thumb": "closed",
+        "index": "open",
+        "middle": "closed",
+        "ring": "closed",
+        "pinky": "closed"
+      }
+    },
+    {
+      "id": "victory",
+      "title": "Victory",
+      "instruction": "Open your index and middle fingers.",
+      "fingers": {
+        "thumb": "closed",
+        "index": "open",
+        "middle": "open",
+        "ring": "closed",
+        "pinky": "closed"
+      }
+    },
+    {
+      "id": "thumbs_up",
+      "title": "Thumbs Up",
+      "instruction": "Lift your thumb and keep the other fingers closed.",
+      "fingers": {
+        "thumb": "open",
+        "index": "closed",
+        "middle": "closed",
+        "ring": "closed",
+        "pinky": "closed"
+      }
+    }
+  ]
+}

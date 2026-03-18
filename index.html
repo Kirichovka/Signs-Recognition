@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gesture Trainer</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+    <main class="gesture-page">
+        <section class="gesture-shell">
+            <div class="gesture-hero">
+                <div class="theme-kicker">Gesture Trainer</div>
+                <h1>Learn Simple Hand Signs</h1>
+                <p>Copy the target sign, hold it steady, and get instant feedback from the camera.</p>
+            </div>
+
+            <div class="gesture-layout">
+                <section class="gesture-panel gesture-target-panel">
+                    <div class="gesture-target-header">
+                        <div>
+                            <div class="gesture-label">Current Sign</div>
+                            <h2 id="gesture-title">Open Palm</h2>
+                        </div>
+                        <div id="gesture-step" class="gesture-step">1 / 5</div>
+                    </div>
+
+                    <div class="gesture-hand-card">
+                        <div id="gesture-emoji" class="gesture-emoji" aria-hidden="true">OPEN</div>
+                        <div class="gesture-hand-copy">
+                            <div class="gesture-label">Instruction</div>
+                            <p id="gesture-instruction">Open your hand and stretch all fingers.</p>
+                        </div>
+                    </div>
+
+                    <div class="gesture-progress-card">
+                        <div class="gesture-progress-header">
+                            <span>Hold Progress</span>
+                            <span id="hold-progress-value">0%</span>
+                        </div>
+                        <div class="gesture-progress-track" aria-hidden="true">
+                            <div id="hold-progress-bar" class="gesture-progress-bar"></div>
+                        </div>
+                    </div>
+
+                    <div class="gesture-calibration-card">
+                        <div class="gesture-calibration-header">
+                            <div>
+                                <div class="gesture-label">Calibration</div>
+                                <h3>Hand Size Setup</h3>
+                            </div>
+                            <button id="calibrate-btn" type="button">Calibrate</button>
+                        </div>
+                        <p id="calibration-status" class="gesture-calibration-status">Not calibrated yet. Show an open palm and press Calibrate.</p>
+                    </div>
+
+                    <div class="gesture-score-grid">
+                        <article class="gesture-score-card">
+                            <div class="gesture-label">Match Score</div>
+                            <div id="gesture-score" class="gesture-score">0%</div>
+                        </article>
+                        <article class="gesture-score-card">
+                            <div class="gesture-label">Status</div>
+                            <div id="gesture-status" class="gesture-status">Waiting for hand</div>
+                        </article>
+                    </div>
+
+                    <div class="gesture-checklist-card">
+                        <div class="gesture-label">Finger Check</div>
+                        <div id="finger-checklist" class="gesture-checklist"></div>
+                    </div>
+
+                    <div class="gesture-controls">
+                        <button id="prev-gesture-btn" type="button" class="secondary">Previous</button>
+                        <button id="next-gesture-btn" type="button">Next</button>
+                    </div>
+                </section>
+
+                <section class="gesture-panel gesture-camera-panel">
+                    <div class="gesture-camera-header">
+                        <div>
+                            <div class="gesture-label">Live Camera</div>
+                            <h2>Mirror View</h2>
+                        </div>
+                        <div id="camera-state" class="gesture-camera-state">Starting camera...</div>
+                    </div>
+
+                    <div class="gesture-camera-stage">
+                        <video id="input-video" class="gesture-video" playsinline></video>
+                        <canvas id="output-canvas" class="gesture-canvas"></canvas>
+                    </div>
+
+                    <div class="gesture-help-card">
+                        <div class="gesture-label">Tips</div>
+                        <p>Keep one hand in the frame, face your palm toward the camera when needed, and hold the pose until the progress bar is full.</p>
+                        <button id="retry-camera-btn" type="button" class="secondary gesture-retry-btn">Retry Camera</button>
+                    </div>
+
+                    <div class="gesture-diagnostics-card">
+                        <div class="gesture-diagnostics-header">
+                            <div>
+                                <div class="gesture-label">Diagnostics</div>
+                                <h3>Camera Access Check</h3>
+                            </div>
+                            <button id="refresh-diagnostics-btn" type="button" class="secondary">Refresh</button>
+                        </div>
+                        <div id="diagnostics-summary" class="gesture-diagnostics-summary">Checking camera environment...</div>
+                        <div id="diagnostics-list" class="gesture-diagnostics-list"></div>
+                    </div>
+                </section>
+            </div>
+        </section>
+    </main>
+
+    <script type="module" src="./js/gesture-trainer.js"></script>
+</body>
+</html>

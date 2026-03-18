@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+
+datasets/wlasl/videos/
+*.npz
+*.pt
+*.pth
+
+.DS_Store
+Thumbs.db
