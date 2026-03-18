@@ -205,6 +205,21 @@ This path is intentionally separate from the word-level pipeline:
 - word model = video / temporal landmarks
 - alphabet model = static image classification
 
+## Extra word videos from a second dataset
+
+The repository also now includes a merge workflow for adding **extra word-level training videos** from a second dataset such as **MS-ASL**.
+
+New resources:
+
+- guide: [MS-ASL Augmentation](./docs/MS_ASL_AUGMENTATION.md)
+- merge utility: [`python/merge_sign_manifests.py`](/D:/Integration-Game/gesture-trainer-web/python/merge_sign_manifests.py)
+
+Recommended approach:
+
+- keep `ASL Citizen` as the primary dataset
+- use `MS-ASL` as extra **train-only** augmentation
+- keep validation and test behavior anchored in the base dataset
+
 ## Optional local Python backend
 
 Even though the web app now works without a backend, the local FastAPI server is still useful for:
