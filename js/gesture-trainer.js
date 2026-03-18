@@ -448,16 +448,49 @@ function scoreProximity(actual, target, tolerance) {
     return clamp01(1 - Math.abs(actual - target) / tolerance);
 }
 
+function angleDegrees(left, pivot, right) {
+    const leftVectorX = left.x - pivot.x;
+    const leftVectorY = left.y - pivot.y;
+    const rightVectorX = right.x - pivot.x;
+    const rightVectorY = right.y - pivot.y;
+    const leftLength = Math.hypot(leftVectorX, leftVectorY);
+    const rightLength = Math.hypot(rightVectorX, rightVectorY);
+    if (!leftLength || !rightLength) {
+        return 180;
+    }
+    const dot = (leftVectorX * rightVectorX) + (leftVectorY * rightVectorY);
+    const cosine = Math.max(-1, Math.min(1, dot / (leftLength * rightLength)));
+    return Math.acos(cosine) * (180 / Math.PI);
+}
+
+function scoreCurledFinger(mcp, pip, dip, tip) {
+    const pipAngle = angleDegrees(mcp, pip, dip);
+    const dipAngle = angleDegrees(pip, dip, tip);
+    return {
+        score: (scoreProximity(pipAngle, 82, 58) * 0.6) + (scoreProximity(dipAngle, 96, 62) * 0.4),
+        pipAngle,
+        dipAngle
+    };
+}
+
 function scoreLetterAForHand(results, handLandmarks) {
     const wrist = handLandmarks[0];
     const thumbTip = handLandmarks[4];
     const indexMcp = handLandmarks[5];
-    const middleMcp = handLandmarks[9];
-    const ringMcp = handLandmarks[13];
-    const pinkyMcp = handLandmarks[17];
+    const indexPip = handLandmarks[6];
+    const indexDip = handLandmarks[7];
     const indexTip = handLandmarks[8];
+    const middleMcp = handLandmarks[9];
+    const middlePip = handLandmarks[10];
+    const middleDip = handLandmarks[11];
     const middleTip = handLandmarks[12];
+    const ringMcp = handLandmarks[13];
+    const ringPip = handLandmarks[14];
+    const ringDip = handLandmarks[15];
     const ringTip = handLandmarks[16];
+    const pinkyMcp = handLandmarks[17];
+    const pinkyPip = handLandmarks[18];
+    const pinkyDip = handLandmarks[19];
     const pinkyTip = handLandmarks[20];
 
     const handScale = Math.max(
@@ -470,13 +503,13 @@ function scoreLetterAForHand(results, handLandmarks) {
         ])
     );
 
-    const curledRatios = [
-        distance2D(indexTip, indexMcp) / handScale,
-        distance2D(middleTip, middleMcp) / handScale,
-        distance2D(ringTip, ringMcp) / handScale,
-        distance2D(pinkyTip, pinkyMcp) / handScale
+    const fingerCurl = [
+        scoreCurledFinger(indexMcp, indexPip, indexDip, indexTip),
+        scoreCurledFinger(middleMcp, middlePip, middleDip, middleTip),
+        scoreCurledFinger(ringMcp, ringPip, ringDip, ringTip),
+        scoreCurledFinger(pinkyMcp, pinkyPip, pinkyDip, pinkyTip)
     ];
-    const curledScore = average(curledRatios.map(ratio => scoreProximity(ratio, 0.42, 0.38)));
+    const curledScore = average(fingerCurl.map(item => item.score));
 
     const thumbHorizontal = Math.abs((thumbTip.x - indexMcp.x) / handScale);
     const thumbVertical = Math.abs((thumbTip.y - indexMcp.y) / handScale);
@@ -500,7 +533,7 @@ function scoreLetterAForHand(results, handLandmarks) {
             bodyPositionScore,
             wristX,
             wristY,
-            curledRatios,
+            fingerCurl,
             thumbHorizontal,
             thumbVertical
         }
@@ -673,7 +706,7 @@ async function collectDiagnostics(extra = {}) {
     if (isAlphabetMode() && getCurrentGesture().id === "A" && latestGeometryDebug) {
         rows.push({
             label: "A geometry",
-            value: `Fist ${Math.round(latestGeometryDebug.fistScore * 100)}%, curled ${Math.round(latestGeometryDebug.curledScore * 100)}%, thumb ${Math.round(latestGeometryDebug.thumbScore * 100)}%, body ${Math.round(latestGeometryDebug.bodyPositionScore * 100)}%.`,
+            value: `Fist ${Math.round(latestGeometryDebug.fistScore * 100)}%, finger bend ${Math.round(latestGeometryDebug.curledScore * 100)}%, thumb ${Math.round(latestGeometryDebug.thumbScore * 100)}%, body ${Math.round(latestGeometryDebug.bodyPositionScore * 100)}%.`,
             badge: "A debug",
             tone: "is-good"
         });
