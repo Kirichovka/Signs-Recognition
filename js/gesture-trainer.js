@@ -65,6 +65,7 @@ let lastCameraError = "";
 let modelState = null;
 let cameraReady = false;
 let trackedHands = 0;
+let latestFrameAnalysis = null;
 
 function buildGestures(labels) {
     return labels.map(label => {
@@ -81,6 +82,53 @@ function buildGestures(labels) {
 
 function getCurrentGesture() {
     return gestures[currentGestureIndex] || gestures[0];
+}
+
+function getGestureTrackingSpec(gesture) {
+    const zoneMap = {
+        BITE1: "mouth",
+        BREAKFAST1: "mouth",
+        DINNER1: "mouth",
+        EAT1: "mouth",
+        LUNCH1: "mouth",
+        BELT1: "waist",
+        BACKPACK1: "chest",
+        CALENDAR1: "chest",
+        CANCEL1: "chest",
+        DEAF1: "head",
+        DOG1: "head",
+        SHAVE1: "head",
+        NOON1: "neutral",
+        NIGHT1: "neutral",
+        CLOUD1: "head",
+        BELIEVE1: "head",
+        GUESS1: "head",
+        LOCK1: "chest",
+        MICROSCOPE1: "head",
+        MOVIE1: "head",
+        RESEARCH1: "chest",
+        RIVER1: "neutral",
+        TYPE1: "chest"
+    };
+    const moveMap = {
+        DRAG1: "right",
+        DOWNSIZE1: "down",
+        ELEVATOR1: "up",
+        RIVER1: "left",
+        TYPE1: "tap",
+        ROCKINGCHAIR1: "swing",
+        BASKETBALL1: "bounce",
+        CLOUD1: "float",
+        SHAVE1: "short",
+        MOVIE1: "short"
+    };
+    const twoHands = /BACKPACK|BASKETBALL|CALENDAR|CHRISTMAS|MOVIE|NOON|PARTY|RESEARCH|TYPE/.test(gesture.id);
+    return {
+        zone: zoneMap[gesture.id] || "neutral",
+        movement: moveMap[gesture.id] || "still",
+        twoHands,
+        requiredHands: twoHands ? 2 : 1
+    };
 }
 
 function getGestureGuide(gesture) {
@@ -124,9 +172,10 @@ function getGestureGuide(gesture) {
         MOVIE1: "short"
     };
 
-    const zone = zoneMap[label] || "neutral";
-    const movement = moveMap[label] || "still";
-    const twoHands = /BACKPACK|BASKETBALL|CALENDAR|CHRISTMAS|MOVIE|NOON|PARTY|RESEARCH|TYPE/.test(label);
+    const spec = getGestureTrackingSpec(gesture);
+    const zone = spec.zone;
+    const movement = spec.movement;
+    const twoHands = spec.twoHands;
 
     const zoneTitles = {
         head: "Head or face level",
@@ -301,6 +350,123 @@ function renderGuideCard() {
     });
 }
 
+function averagePoint(points) {
+    if (!points.length) {
+        return null;
+    }
+    return {
+        x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
+        y: points.reduce((sum, point) => sum + point.y, 0) / points.length
+    };
+}
+
+function visiblePoint(point, minVisibility = 0.2) {
+    return !!point && (point.visibility === undefined || point.visibility >= minVisibility);
+}
+
+function analyzeCurrentFrame(results) {
+    const gesture = getCurrentGesture();
+    const spec = getGestureTrackingSpec(gesture);
+    const pose = results.poseLandmarks || [];
+    const nose = pose[0];
+    const mouthLeft = pose[9];
+    const mouthRight = pose[10];
+    const leftShoulder = pose[11];
+    const rightShoulder = pose[12];
+    const leftHip = pose[23];
+    const rightHip = pose[24];
+    const shouldersVisible = visiblePoint(leftShoulder) && visiblePoint(rightShoulder);
+    const hipsVisible = visiblePoint(leftHip) && visiblePoint(rightHip);
+    const faceVisible = visiblePoint(nose) || (visiblePoint(mouthLeft) && visiblePoint(mouthRight));
+
+    const handSets = [results.leftHandLandmarks || null, results.rightHandLandmarks || null].filter(Boolean);
+    const handCentroids = handSets.map(hand => averagePoint(hand)).filter(Boolean);
+    const primaryCentroid = averagePoint(handCentroids);
+
+    let shoulderSpan = shouldersVisible
+        ? Math.hypot(leftShoulder.x - rightShoulder.x, leftShoulder.y - rightShoulder.y)
+        : 0;
+    shoulderSpan = Math.max(shoulderSpan, 0.08);
+
+    const shoulderCenter = shouldersVisible
+        ? averagePoint([leftShoulder, rightShoulder])
+        : { x: 0.5, y: 0.45 };
+    const mouthCenter = visiblePoint(mouthLeft) && visiblePoint(mouthRight)
+        ? averagePoint([mouthLeft, mouthRight])
+        : visiblePoint(nose)
+            ? { x: nose.x, y: nose.y + shoulderSpan * 0.12 }
+            : { x: shoulderCenter.x, y: shoulderCenter.y - shoulderSpan * 0.55 };
+    const hipCenter = hipsVisible
+        ? averagePoint([leftHip, rightHip])
+        : { x: shoulderCenter.x, y: shoulderCenter.y + shoulderSpan * 1.45 };
+
+    const zoneCenters = {
+        head: { x: shoulderCenter.x, y: shoulderCenter.y - shoulderSpan * 0.72 },
+        mouth: mouthCenter,
+        chest: { x: shoulderCenter.x, y: shoulderCenter.y + shoulderSpan * 0.25 },
+        waist: { x: hipCenter.x, y: hipCenter.y - shoulderSpan * 0.12 },
+        neutral: { x: shoulderCenter.x, y: shoulderCenter.y + shoulderSpan * 0.35 }
+    };
+
+    const warnings = [];
+    if (!shouldersVisible) {
+        warnings.push("You're not visible enough. Keep your head and both shoulders in frame.");
+    }
+    if (spec.zone === "mouth" && !faceVisible) {
+        warnings.push("Your face is not visible enough for a mouth-level sign.");
+    }
+    if (handCentroids.length < spec.requiredHands) {
+        warnings.push(spec.requiredHands === 2
+            ? "This sign needs both hands visible in the frame."
+            : "Raise your signing hand fully into the frame.");
+    }
+    if (shouldersVisible && shoulderSpan < 0.14) {
+        warnings.push("Move a little closer to the camera so the model can read your upper body.");
+    }
+    if (primaryCentroid && (primaryCentroid.x < 0.12 || primaryCentroid.x > 0.88 || primaryCentroid.y < 0.08 || primaryCentroid.y > 0.92)) {
+        warnings.push("Part of the hand is near the edge of the frame. Move back to the center.");
+    }
+
+    let zoneOk = true;
+    let liveZone = "unknown";
+    if (primaryCentroid && shouldersVisible) {
+        const zoneDistances = Object.entries(zoneCenters).map(([zoneName, center]) => ({
+            zoneName,
+            distance: Math.hypot(primaryCentroid.x - center.x, primaryCentroid.y - center.y)
+        })).sort((a, b) => a.distance - b.distance);
+        liveZone = zoneDistances[0]?.zoneName || "unknown";
+
+        if (spec.zone !== "neutral") {
+            const expectedCenter = zoneCenters[spec.zone];
+            const distanceToExpected = Math.hypot(primaryCentroid.x - expectedCenter.x, primaryCentroid.y - expectedCenter.y);
+            zoneOk = distanceToExpected <= shoulderSpan * 0.65;
+            if (!zoneOk) {
+                const zoneLabels = {
+                    head: "higher, near the face",
+                    mouth: "closer to the mouth",
+                    chest: "closer to the upper chest",
+                    waist: "lower, around the torso",
+                    neutral: "in the neutral signing space"
+                };
+                warnings.push(`The sign is in the wrong zone. Move it ${zoneLabels[spec.zone]}.`);
+            }
+        }
+    }
+
+    return {
+        gestureId: gesture.id,
+        requiredHands: spec.requiredHands,
+        handsVisible: handCentroids.length,
+        shouldersVisible,
+        faceVisible,
+        zoneTarget: spec.zone,
+        liveZone,
+        zoneOk,
+        primaryWarning: warnings[0] || "",
+        warnings
+    };
+}
+
 function renderGestureCard() {
     const gesture = getCurrentGesture();
     gestureTitle.textContent = gesture.title;
@@ -410,6 +576,20 @@ async function collectDiagnostics(extra = {}) {
             tone: trackedHands ? "is-good" : "is-neutral"
         },
         {
+            label: "Target zone",
+            value: latestFrameAnalysis
+                ? `Expected: ${latestFrameAnalysis.zoneTarget}. Live: ${latestFrameAnalysis.liveZone}.`
+                : "Waiting for a tracked frame.",
+            badge: latestFrameAnalysis?.zoneOk ? "Aligned" : "Check zone",
+            tone: latestFrameAnalysis?.zoneOk ? "is-good" : "is-neutral"
+        },
+        {
+            label: "Visibility coach",
+            value: latestFrameAnalysis?.primaryWarning || "Framing looks usable for recognition.",
+            badge: latestFrameAnalysis?.primaryWarning ? "Adjust" : "Good",
+            tone: latestFrameAnalysis?.primaryWarning ? "is-bad" : "is-good"
+        },
+        {
             label: "Frame buffer",
             value: `${frameBuffer.length} / ${MAX_SEQUENCE} frames buffered for inference.`,
             badge: `${frameBuffer.length}`,
@@ -445,12 +625,16 @@ function evaluatePredictions(predictions) {
     const best = predictions[0] || null;
     const targetPrediction = predictions.find(item => item.label === target.id) || null;
     const targetScore = targetPrediction?.score || 0;
+    const frameAnalysis = latestFrameAnalysis;
 
     let holdProgress = 0;
     let stableSuccess = false;
     let statusText = "Hold the target sign steady so the browser model sees a full 40-frame sequence.";
 
-    if (best && best.label === target.id && best.score >= SCORE_THRESHOLD) {
+    if (frameAnalysis?.primaryWarning) {
+        holdStartedAt = 0;
+        statusText = frameAnalysis.primaryWarning;
+    } else if (best && best.label === target.id && best.score >= SCORE_THRESHOLD && frameAnalysis?.zoneOk !== false) {
         if (!holdStartedAt) {
             holdStartedAt = performance.now();
         }
@@ -460,9 +644,14 @@ function evaluatePredictions(predictions) {
         statusText = stableSuccess
             ? `Matched ${target.title}. Moving to the next trained sign.`
             : `Matched ${target.title}. Keep holding it a little longer.`;
+    } else if (targetPrediction && targetPrediction.score >= 0.28) {
+        holdStartedAt = 0;
+        statusText = `The model weakly sees ${target.title} (${Math.round(targetPrediction.score * 100)}%). Clean up the framing and hold more steadily.`;
     } else if (best) {
         holdStartedAt = 0;
-        statusText = `Top guess is ${prettifyLabel(best.label)} at ${Math.round(best.score * 100)}%. Adjust toward ${target.title}.`;
+        statusText = best.score < 0.28
+            ? "The model is not confident yet. Re-center yourself and make the sign larger and clearer."
+            : `Top guess is ${prettifyLabel(best.label)} at ${Math.round(best.score * 100)}%. Adjust toward ${target.title}.`;
     } else {
         holdStartedAt = 0;
     }
@@ -512,6 +701,7 @@ function onHolisticResults(results) {
         frameBuffer.shift();
     }
     trackedHands = [results.leftHandLandmarks, results.rightHandLandmarks].filter(Boolean).length;
+    latestFrameAnalysis = analyzeCurrentFrame(results);
     frameCounter += 1;
     cameraReady = true;
     cameraState.textContent = "Camera is live";
