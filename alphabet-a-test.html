@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ASL Sign Trainer</title>
+    <title>ASL Letter A Test</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
@@ -12,15 +12,11 @@
     <main class="gesture-page">
         <section class="gesture-shell">
             <div class="gesture-hero">
-                <div class="theme-kicker">ASL Browser Trainer</div>
-                <h1>Practice The Signs We Trained</h1>
-                <p id="trainer-subtitle">Cycle through the trained ASL classes, line up your live landmarks with the target overlay, and hold the final pose inside the allowed tolerance.</p>
-                <div class="gesture-mode-switch" role="group" aria-label="Practice mode">
-                    <button id="mode-words-btn" type="button" class="gesture-mode-btn is-active">Words</button>
-                    <button id="mode-alphabet-btn" type="button" class="gesture-mode-btn">Alphabet</button>
-                </div>
+                <div class="theme-kicker">ASL Letter Geometry</div>
+                <h1>Letter A Test</h1>
+                <p>Test only the ASL letter A with a geometric score based on fist shape, curled fingers, thumb placement, and wrist position relative to the body.</p>
                 <div class="gesture-link-row">
-                    <a class="gesture-link-btn" href="./alphabet-a-test.html">Open Letter A Test</a>
+                    <a class="gesture-link-btn" href="./index.html">Back To Main Trainer</a>
                 </div>
             </div>
 
@@ -28,36 +24,52 @@
                 <section class="gesture-panel gesture-target-panel">
                     <div class="gesture-target-header">
                         <div>
-                            <div id="gesture-target-label" class="gesture-label">Target Sign</div>
-                            <h2 id="gesture-title">Open Palm</h2>
+                            <div class="gesture-label">Target Letter</div>
+                            <h2>Letter A</h2>
                         </div>
-                        <div id="gesture-step" class="gesture-step">1 / 50</div>
+                        <div class="gesture-step">Geometry Only</div>
                     </div>
 
                     <div class="gesture-hand-card">
-                        <div id="gesture-emoji" class="gesture-emoji" aria-hidden="true">OPEN</div>
+                        <div class="gesture-emoji" aria-hidden="true">
+                            <svg viewBox="0 0 100 100" class="gesture-preview-svg">
+                                <defs>
+                                    <linearGradient id="aTestBg" x1="0%" y1="0%" x2="100%" y2="100%">
+                                        <stop offset="0%" stop-color="#2563eb" />
+                                        <stop offset="100%" stop-color="#38bdf8" />
+                                    </linearGradient>
+                                </defs>
+                                <rect x="2" y="2" width="96" height="96" rx="24" fill="url(#aTestBg)" />
+                                <text x="50" y="58" text-anchor="middle" font-size="36" font-weight="800" fill="rgba(255,255,255,0.98)" font-family="Arial, sans-serif">A</text>
+                            </svg>
+                        </div>
                         <div class="gesture-hand-copy">
-                            <div class="gesture-label">Template Goal</div>
-                            <p id="gesture-instruction">Show the trained sign and hold it steady.</p>
+                            <div class="gesture-label">Target</div>
+                            <p>Make a closed fist, keep the fingers curled, and rest the thumb across the side/front of the fist.</p>
                         </div>
                     </div>
 
                     <div class="gesture-guide-card">
                         <div class="gesture-guide-header">
                             <div>
-                                <div class="gesture-label">How To Do It</div>
-                                <h3 id="gesture-guide-title">Learning cue</h3>
+                                <div class="gesture-label">How It Is Measured</div>
+                                <h3>Relative Geometry</h3>
                             </div>
-                            <div id="gesture-guide-badge" class="gesture-check-badge is-neutral">Neutral space</div>
+                            <div class="gesture-check-badge is-neutral">No shadow overlay</div>
                         </div>
-                        <p id="gesture-guide-description" class="gesture-guide-description">A short coaching hint for the current sign will appear here.</p>
-                        <div class="gesture-guide-stage" aria-hidden="true">
-                            <div class="gesture-guide-body"></div>
-                            <div id="gesture-guide-hand" class="gesture-guide-hand"></div>
-                            <div id="gesture-guide-arrow" class="gesture-guide-arrow"></div>
+                        <p class="gesture-guide-description">This page does not draw the target sign on top of the camera. It only scores the current frame.</p>
+                        <div class="gesture-guide-chips">
+                            <span class="gesture-guide-chip">Fist shape</span>
+                            <span class="gesture-guide-chip">Finger curl</span>
+                            <span class="gesture-guide-chip">Thumb placement</span>
+                            <span class="gesture-guide-chip">Body-relative wrist position</span>
                         </div>
-                        <div id="gesture-guide-chips" class="gesture-guide-chips"></div>
-                        <div id="gesture-guide-steps" class="gesture-guide-steps"></div>
+                        <div class="gesture-guide-steps">
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">1</div><div class="gesture-guide-step-copy">Show one clear hand in the frame.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">2</div><div class="gesture-guide-step-copy">Close the fingers into a fist.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">3</div><div class="gesture-guide-step-copy">Place the thumb along the side/front of the fist.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">4</div><div class="gesture-guide-step-copy">Hold the pose for about one second.</div></div>
+                        </div>
                     </div>
 
                     <div class="gesture-progress-card">
@@ -70,20 +82,9 @@
                         </div>
                     </div>
 
-                    <div class="gesture-calibration-card">
-                        <div class="gesture-calibration-header">
-                            <div>
-                                <div class="gesture-label">Recognition</div>
-                                <h3>Template Matcher</h3>
-                            </div>
-                            <button id="calibrate-btn" type="button">Reload Templates</button>
-                        </div>
-                        <p id="calibration-status" class="gesture-calibration-status">Loading pose templates...</p>
-                    </div>
-
                     <div class="gesture-score-grid">
                         <article class="gesture-score-card">
-                            <div class="gesture-label">Target Score</div>
+                            <div class="gesture-label">Letter A Score</div>
                             <div id="gesture-score" class="gesture-score">0%</div>
                         </article>
                         <article class="gesture-score-card">
@@ -93,13 +94,8 @@
                     </div>
 
                     <div class="gesture-checklist-card">
-                        <div class="gesture-label">Top Predictions</div>
-                        <div id="finger-checklist" class="gesture-checklist"></div>
-                    </div>
-
-                    <div class="gesture-controls">
-                        <button id="prev-gesture-btn" type="button" class="secondary">Previous</button>
-                        <button id="next-gesture-btn" type="button">Next</button>
+                        <div class="gesture-label">Score Breakdown</div>
+                        <div id="score-breakdown" class="gesture-checklist"></div>
                     </div>
                 </section>
 
@@ -119,7 +115,7 @@
 
                     <div class="gesture-help-card">
                         <div class="gesture-label">Tips</div>
-                        <p id="camera-help-text">Keep one signer centered, show both hands and upper body when needed, and match the last visible handshape to the target dots with a small tolerance.</p>
+                        <p>Keep your shoulders visible, use one clear hand, and make the fist large enough that MediaPipe can track all fingertips.</p>
                         <button id="retry-camera-btn" type="button" class="secondary gesture-retry-btn">Retry Camera</button>
                     </div>
 
@@ -127,7 +123,7 @@
                         <div class="gesture-diagnostics-header">
                             <div>
                                 <div class="gesture-label">Diagnostics</div>
-                                <h3>Camera Access Check</h3>
+                                <h3>Letter A Geometry</h3>
                             </div>
                             <button id="refresh-diagnostics-btn" type="button" class="secondary">Refresh</button>
                         </div>
@@ -139,6 +135,6 @@
         </section>
     </main>
 
-    <script type="module" src="./js/gesture-trainer.js?v=20260318-10"></script>
+    <script type="module" src="./js/alphabet-a-test.js?v=20260319-1"></script>
 </body>
 </html>

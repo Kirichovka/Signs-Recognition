@@ -75,6 +75,29 @@ button.secondary { background: #64748b; }
     background: linear-gradient(90deg, #2563eb 0%, #0ea5e9 100%);
     color: #fff;
 }
+.gesture-link-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+.gesture-link-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    padding: 10px 16px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid var(--color-soft-border);
+    color: var(--color-text-brand);
+    font-size: 14px;
+    font-weight: 700;
+    text-decoration: none;
+}
+.gesture-link-btn:hover {
+    background: rgba(224, 242, 254, 0.95);
+}
 .gesture-layout {
     display: grid;
     grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
