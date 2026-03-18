@@ -31,6 +31,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skip-bootstrap-ms-asl", action="store_true", help="Skip MS-ASL inside bootstrap mode.")
     parser.add_argument("--skip-bootstrap-asl-semcom", action="store_true", help="Skip ASL_SemCom inside bootstrap mode.")
     parser.add_argument("--download-only", action="store_true", help="When used with --bootstrap-datasets, only download archives and do not extract them.")
+    parser.add_argument("--export-web", action="store_true", help="Run the unified web export after the requested training pipelines.")
+    parser.add_argument("--publish-word", action="store_true", help="When used with --export-web, publish the exported word model into the models directory.")
+    parser.add_argument("--publish-alphabet", action="store_true", help="When used with --export-web, publish the exported alphabet model into the models directory.")
+    parser.add_argument("--web-export-output-root", default="", help="Optional output root for web exports.")
+    parser.add_argument("--web-models-dir", default="", help="Optional models directory used by unified web export.")
     parser.add_argument("--force", action="store_true", help="Forward force mode to child pipelines.")
     return parser.parse_args()
 
@@ -46,6 +51,8 @@ def main() -> int:
     repo_root = Path(__file__).resolve().parents[1]
     python_dir = repo_root / "python"
     python_exe = sys.executable
+    word_run_root: Path | None = None
+    alphabet_run_root: Path | None = None
 
     if args.bootstrap_datasets:
         bootstrap_command = [
@@ -93,6 +100,7 @@ def main() -> int:
         if args.force:
             word_command.append("--force")
         run_step(word_command, cwd=repo_root)
+        word_run_root = Path(args.word_output_root).resolve() if args.word_output_root else (repo_root / "artifacts" / "word_model" / args.word_run_name)
 
     if args.mode in {"all", "alphabet"}:
         if not args.alphabet_dataset_root:
@@ -110,6 +118,43 @@ def main() -> int:
         if args.force:
             alphabet_command.append("--force")
         run_step(alphabet_command, cwd=repo_root)
+        alphabet_run_root = Path(args.alphabet_output_root).resolve() if args.alphabet_output_root else (repo_root / "artifacts" / "alphabet_model" / args.alphabet_run_name)
+
+    if args.export_web:
+        export_command = [
+            python_exe,
+            str(python_dir / "export_models_for_web.py"),
+            "--mode",
+            args.mode,
+        ]
+        if args.web_export_output_root:
+            export_command.extend(["--output-root", str(Path(args.web_export_output_root).resolve())])
+        if args.web_models_dir:
+            export_command.extend(["--models-dir", str(Path(args.web_models_dir).resolve())])
+        if args.publish_word:
+            export_command.append("--publish-word")
+        if args.publish_alphabet:
+            export_command.append("--publish-alphabet")
+
+        if args.mode in {"all", "word"}:
+            run_root = word_run_root or (Path(args.word_output_root).resolve() if args.word_output_root else (repo_root / "artifacts" / "word_model" / args.word_run_name))
+            export_command.extend([
+                "--word-checkpoint",
+                str(run_root / "training_run" / "best_model.pt"),
+                "--word-name",
+                args.word_run_name,
+            ])
+
+        if args.mode in {"all", "alphabet"}:
+            run_root = alphabet_run_root or (Path(args.alphabet_output_root).resolve() if args.alphabet_output_root else (repo_root / "artifacts" / "alphabet_model" / args.alphabet_run_name))
+            export_command.extend([
+                "--alphabet-checkpoint",
+                str(run_root / "training_run" / "best_model.pt"),
+                "--alphabet-name",
+                args.alphabet_run_name,
+            ])
+
+        run_step(export_command, cwd=repo_root)
 
     print()
     print("Requested pipelines completed successfully.")
