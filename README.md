@@ -322,6 +322,17 @@ python run_model_pipelines.py ^
   --alphabet-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_semcom\ASL_SemCom
 ```
 
+Bootstrap datasets first, then run both pipelines:
+
+```powershell
+cd D:\Integration-Game\gesture-trainer-web\python
+python run_model_pipelines.py ^
+  --bootstrap-datasets ^
+  --mode all ^
+  --word-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_citizen\ASL_Citizen ^
+  --alphabet-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_semcom\ASL_SemCom
+```
+
 ## Optional local Python backend
 
 Even though the web app now works without a backend, the local FastAPI server is still useful for:
