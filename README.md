@@ -205,6 +205,11 @@ This path is intentionally separate from the word-level pipeline:
 - word model = video / temporal landmarks
 - alphabet model = static image classification
 
+For duplicate checks in alphabet image datasets:
+
+- scanner: [`python/check_image_duplicates.py`](/D:/Integration-Game/gesture-trainer-web/python/check_image_duplicates.py)
+- docs: [Alphabet Dataset](./docs/ALPHABET_DATASET.md)
+
 ## Extra word videos from a second dataset
 
 The repository also now includes a merge workflow for adding **extra word-level training videos** from a second dataset such as **MS-ASL**.

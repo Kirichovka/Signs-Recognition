@@ -144,3 +144,34 @@ If needed, the repo can be extended next with:
 - an alphabet dataset manifest builder
 - an alphabet CNN training script
 - a browser-friendly alphabet inference model
+
+## Duplicate photo check
+
+The repository now also includes an exact duplicate scanner:
+
+- [`python/check_image_duplicates.py`](/D:/Integration-Game/gesture-trainer-web/python/check_image_duplicates.py)
+
+It is useful for:
+
+- checking whether the same photo appears more than once
+- detecting exact duplicates across `train` and `test`
+- spotting exact duplicates reused across different labels
+
+Example:
+
+```powershell
+cd D:\Integration-Game\gesture-trainer-web\python
+python check_image_duplicates.py ^
+  --root D:\Integration-Game\gesture-trainer-web\datasets\asl_semcom\ASL_SemCom ^
+  --fail-on-cross-split
+```
+
+The script writes a JSON report by default to:
+
+- `duplicate_report.json` inside the scanned root
+
+Recommended workflow:
+
+1. download the alphabet dataset
+2. run the duplicate scan
+3. inspect any cross-split duplicates before training
