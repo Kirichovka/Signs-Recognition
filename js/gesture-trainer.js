@@ -30,6 +30,13 @@ const holdProgressValue = document.getElementById("hold-progress-value");
 const gestureScore = document.getElementById("gesture-score");
 const gestureStatus = document.getElementById("gesture-status");
 const fingerChecklist = document.getElementById("finger-checklist");
+const gestureGuideTitle = document.getElementById("gesture-guide-title");
+const gestureGuideBadge = document.getElementById("gesture-guide-badge");
+const gestureGuideDescription = document.getElementById("gesture-guide-description");
+const gestureGuideHand = document.getElementById("gesture-guide-hand");
+const gestureGuideArrow = document.getElementById("gesture-guide-arrow");
+const gestureGuideChips = document.getElementById("gesture-guide-chips");
+const gestureGuideSteps = document.getElementById("gesture-guide-steps");
 const cameraState = document.getElementById("camera-state");
 const inputVideo = document.getElementById("input-video");
 const outputCanvas = document.getElementById("output-canvas");
@@ -76,12 +83,231 @@ function getCurrentGesture() {
     return gestures[currentGestureIndex] || gestures[0];
 }
 
+function getGestureGuide(gesture) {
+    const label = gesture.id;
+    const title = gesture.title;
+    const zoneMap = {
+        BITE1: "mouth",
+        BREAKFAST1: "mouth",
+        DINNER1: "mouth",
+        EAT1: "mouth",
+        LUNCH1: "mouth",
+        BELT1: "waist",
+        BACKPACK1: "chest",
+        CALENDAR1: "chest",
+        CANCEL1: "chest",
+        DEAF1: "head",
+        DOG1: "head",
+        SHAVE1: "head",
+        NOON1: "neutral",
+        NIGHT1: "neutral",
+        CLOUD1: "head",
+        BELIEVE1: "head",
+        GUESS1: "head",
+        LOCK1: "chest",
+        MICROSCOPE1: "head",
+        MOVIE1: "head",
+        RESEARCH1: "chest",
+        RIVER1: "neutral",
+        TYPE1: "chest"
+    };
+    const moveMap = {
+        DRAG1: "right",
+        DOWNSIZE1: "down",
+        ELEVATOR1: "up",
+        RIVER1: "left",
+        TYPE1: "tap",
+        ROCKINGCHAIR1: "swing",
+        BASKETBALL1: "bounce",
+        CLOUD1: "float",
+        SHAVE1: "short",
+        MOVIE1: "short"
+    };
+
+    const zone = zoneMap[label] || "neutral";
+    const movement = moveMap[label] || "still";
+    const twoHands = /BACKPACK|BASKETBALL|CALENDAR|CHRISTMAS|MOVIE|NOON|PARTY|RESEARCH|TYPE/.test(label);
+
+    const zoneTitles = {
+        head: "Head or face level",
+        mouth: "Near the mouth",
+        chest: "Upper chest space",
+        waist: "Lower torso space",
+        neutral: "Neutral signing space"
+    };
+    const zoneDescriptions = {
+        head: `Start the sign around face level and keep your shoulders visible so the model can see where the motion begins.`,
+        mouth: `Bring the sign close to the mouth area, but keep the hand separated enough that the camera still sees the hand shape clearly.`,
+        chest: `Keep the sign in front of the upper chest, not too low, and avoid drifting outside the camera center.`,
+        waist: `Drop the hand a bit lower toward the torso so the gesture reads closer to belt or hip level.`,
+        neutral: `Use the open space in front of your chest and shoulders, with the signer centered and the elbows relaxed.`
+    };
+
+    const motionDescriptions = {
+        still: "Hold the handshape steady once you form it.",
+        right: "Add a small sideways movement toward your dominant-hand side.",
+        left: "Let the hand travel smoothly across the body line.",
+        up: "Lift the sign in a short upward motion.",
+        down: "Finish with a controlled drop rather than a fast swing.",
+        tap: "Use a short repeated touch or tap motion.",
+        swing: "Rock the hand slightly back and forth instead of freezing it.",
+        bounce: "Use a compact bouncing rhythm rather than one single frozen pose.",
+        float: "Keep the hand light and drifting rather than rigid.",
+        short: "Use a short, compact motion and return to the same position."
+    };
+
+    const labelSpecific = {
+        AXE1: `Shape one hand like you are gripping an axe handle and show a compact chopping idea rather than a wide swing.`,
+        BACKPACK1: `Bring both hands near the upper torso like you are referring to backpack straps.`,
+        BASKETBALL1: `Use both hands as if controlling or bouncing a ball in front of the body.`,
+        BEE1: `Keep the motion small and precise so the handshape stays readable.`,
+        BELIEVE1: `Begin closer to the face and let the sign settle outward in a confident shape.`,
+        BELT1: `Place the sign lower, around belt height, with the handshape staying neat and centered.`,
+        BITE1: `Move the hand toward the mouth in a short “bite” action without covering the face.`,
+        BREAKFAST1: `Show the eating-related motion near the mouth and then hold the final shape clearly.`,
+        CALENDAR1: `Use both hands in front of the chest and make the shape look structured, almost like a page or frame.`,
+        CANCEL1: `Make the crossing or stopping motion crisp and deliberate so the model catches the change.`,
+        CANCER1: `Keep the motion compact and repeatable; avoid large travel that changes the landmark pattern.`,
+        CHRISTMAS1: `Use both hands if the sign naturally calls for it and keep the movement centered in the frame.`,
+        CLOUD1: `Lift the sign higher, around head level, with a soft floating shape.`,
+        CONFUSED1: `Keep the expressive motion small and close to the upper body so the hand landmarks stay stable.`,
+        DARK1: `Use a clear closing or covering idea and hold the ending pose for a beat.`,
+        DEAF1: `Stay near the side of the face and make the contact points easy to read.`,
+        DECIDE1: `Finish the sign cleanly and then freeze the final handshape for the model.`,
+        DEMAND1: `Use a firm, forward-facing presentation with a strong final hold.`,
+        DINNER1: `Treat it like an eating sign near the mouth, then pause clearly.`,
+        DOG1: `Keep the sign near the side of the face and avoid moving too far outward.`,
+        DOWNSIZE1: `Start slightly higher and let the movement reduce or drop in a controlled way.`,
+        DRAG1: `Pull the hand sideways or slightly downward with a visible travel path.`,
+        EAT1: `Bring the hand toward the mouth and hold the closing moment clearly.`,
+        EDIT1: `Use a compact corrective motion with the hands staying near chest level.`,
+        ELEVATOR1: `Show a clear vertical lift so the up direction is obvious.`,
+        FINE1: `Keep the sign calm and centered with a clean handshape.`,
+        FOREIGNER1: `Prioritize a readable handshape and central body framing over large expressive movement.`,
+        GUESS1: `Start near the head or temple area and keep the motion thoughtful but compact.`,
+        HALLOWEEN1: `Use the full upper body frame and keep the gesture theatrical but stable.`,
+        HOSPITAL1: `Center both hands and upper torso so the sign stays symmetrical if needed.`,
+        "HURDLE/TRIP1": `Show a blocked or stumbling idea with a short directional motion instead of a big jump.`,
+        LETTUCE1: `Keep the handshape distinct and avoid turning the palm away from the camera.`,
+        LOCK1: `Show the locking action at chest height and pause on the closing position.`,
+        LUNCH1: `Near-mouth placement matters more here than large motion.`,
+        MECHANIC1: `Use a tool-like, deliberate motion and keep it tight in the middle of the frame.`,
+        MICROSCOPE1: `Bring the sign higher, closer to the face, so the small inspection shape is visible.`,
+        MOVIE1: `Use the short repeated action near the upper body and keep both hands visible if you use them.`,
+        NIGHT1: `Let the sign settle into its ending position and hold there.`,
+        NOON1: `Present the sign clearly in neutral space with a precise vertical relationship.`,
+        PARTY1: `If you use two hands, keep both in frame and close to the torso.`,
+        PATIENT2: `Hold the final posture cleanly and avoid extra movement after the sign is formed.`,
+        RECENT1: `Use a small time-related motion and keep it close to the torso.`,
+        RESEARCH1: `Keep both hands active near the chest and make the repeated action even and rhythmic.`,
+        RIVER1: `Let the motion travel sideways smoothly instead of freezing too early.`,
+        ROCKINGCHAIR1: `Use a gentle rocking motion so the temporal pattern shows up in the frame buffer.`,
+        SHAVE1: `Stay near the face and make the movement short and repeatable.`,
+        SPECIAL1: `Give the sign a distinct final shape and hold it steady for the classifier.`,
+        THIRD1: `Emphasize finger configuration first, then hold still.`,
+        TYPE1: `Use both hands if natural, with a short tapping rhythm in front of the chest.`,
+        WHATFOR1: `Keep the question-like motion centered and finish with a brief hold.`
+    };
+
+    const chips = [
+        zoneTitles[zone],
+        twoHands ? "Often two hands" : "Usually one main hand",
+        movement === "still" ? "Hold after shaping" : "Includes visible motion"
+    ];
+
+    const steps = [
+        zoneDescriptions[zone],
+        motionDescriptions[movement],
+        twoHands
+            ? "Keep both hands inside the frame and at roughly the same depth so the model keeps tracking them."
+            : "Lead with one clear hand and keep the non-dominant hand quiet unless the sign needs both hands.",
+        `Once the sign looks right, freeze the end position for about ${HOLD_SECONDS} second so the progress bar can fill.`
+    ];
+
+    const visual = {
+        head: { x: "50%", y: "28%" },
+        mouth: { x: "50%", y: "38%" },
+        chest: { x: "50%", y: "54%" },
+        waist: { x: "50%", y: "72%" },
+        neutral: { x: "50%", y: "52%" }
+    }[zone];
+
+    const movementVisual = {
+        still: { rotation: "0deg", scale: "1", tone: "Hold" },
+        right: { rotation: "0deg", scale: "1", tone: "Move right" },
+        left: { rotation: "180deg", scale: "1", tone: "Move left" },
+        up: { rotation: "-90deg", scale: "1", tone: "Lift up" },
+        down: { rotation: "90deg", scale: "1", tone: "Move down" },
+        tap: { rotation: "90deg", scale: "0.55", tone: "Short tap" },
+        swing: { rotation: "0deg", scale: "0.8", tone: "Rock gently" },
+        bounce: { rotation: "90deg", scale: "0.8", tone: "Bounce" },
+        float: { rotation: "-35deg", scale: "0.85", tone: "Float" },
+        short: { rotation: "0deg", scale: "0.55", tone: "Short move" }
+    }[movement];
+
+    return {
+        title: zoneTitles[zone],
+        description: labelSpecific[label] || `Practice the sign for "${title}" in ${zoneTitles[zone].toLowerCase()} and let the model confirm when the final shape is stable.`,
+        chips,
+        steps,
+        visual: {
+            x: visual.x,
+            y: visual.y,
+            rotation: movementVisual.rotation,
+            scale: movementVisual.scale,
+            movementTone: movementVisual.tone,
+            isStill: movement === "still"
+        }
+    };
+}
+
+function renderGuideCard() {
+    const guide = getGestureGuide(getCurrentGesture());
+    gestureGuideTitle.textContent = guide.title;
+    gestureGuideBadge.textContent = guide.visual.movementTone;
+    gestureGuideDescription.textContent = guide.description;
+
+    gestureGuideHand.style.setProperty("--guide-x", guide.visual.x);
+    gestureGuideHand.style.setProperty("--guide-y", guide.visual.y);
+    gestureGuideArrow.style.setProperty("--guide-x", guide.visual.x);
+    gestureGuideArrow.style.setProperty("--guide-y", guide.visual.y);
+    gestureGuideArrow.style.setProperty("--guide-rotation", guide.visual.rotation);
+    gestureGuideArrow.style.setProperty("--guide-scale", guide.visual.scale);
+    gestureGuideArrow.classList.toggle("is-still", guide.visual.isStill);
+
+    gestureGuideChips.innerHTML = "";
+    guide.chips.forEach(chipText => {
+        const chip = document.createElement("span");
+        chip.className = "gesture-guide-chip";
+        chip.textContent = chipText;
+        gestureGuideChips.appendChild(chip);
+    });
+
+    gestureGuideSteps.innerHTML = "";
+    guide.steps.forEach((stepText, index) => {
+        const row = document.createElement("div");
+        row.className = "gesture-guide-step";
+
+        const stepIndex = document.createElement("div");
+        stepIndex.className = "gesture-guide-step-index";
+        stepIndex.textContent = `${index + 1}`;
+
+        const stepCopy = document.createElement("div");
+        stepCopy.className = "gesture-guide-step-copy";
+        stepCopy.textContent = stepText;
+
+        row.append(stepIndex, stepCopy);
+        gestureGuideSteps.appendChild(row);
+    });
+}
+
 function renderGestureCard() {
     const gesture = getCurrentGesture();
     gestureTitle.textContent = gesture.title;
     gestureInstruction.textContent = gesture.instruction;
     gestureEmoji.textContent = gesture.badge;
     gestureStep.textContent = `${currentGestureIndex + 1} / ${gestures.length}`;
+    renderGuideCard();
 }
 
 function renderStatus(score, holdProgress, statusText) {

@@ -95,6 +95,15 @@ button.secondary { background: #64748b; }
     background: linear-gradient(180deg, rgba(248, 251, 255, 0.96) 0%, rgba(238, 246, 255, 0.96) 100%);
     border: 1px solid var(--color-soft-border);
 }
+.gesture-guide-card {
+    margin-top: 18px;
+    padding: 18px;
+    border-radius: 22px;
+    background:
+        radial-gradient(circle at top right, rgba(14, 165, 233, 0.12), transparent 24%),
+        linear-gradient(180deg, rgba(248, 251, 255, 0.98) 0%, rgba(235, 244, 255, 0.98) 100%);
+    border: 1px solid var(--color-soft-border);
+}
 .gesture-diagnostics-card {
     margin-top: 18px;
     padding: 18px;
@@ -123,6 +132,164 @@ button.secondary { background: #64748b; }
     margin: 8px 0 0;
     color: var(--color-text-primary);
     line-height: 1.6;
+}
+.gesture-guide-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+.gesture-guide-header h3 {
+    margin: 8px 0 0;
+    font-size: 24px;
+    color: var(--color-text-brand);
+}
+.gesture-guide-description {
+    margin: 12px 0 0;
+    color: var(--color-text-primary);
+    line-height: 1.6;
+}
+.gesture-guide-stage {
+    position: relative;
+    margin-top: 16px;
+    height: 170px;
+    border-radius: 20px;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at center, rgba(191, 219, 254, 0.55), transparent 46%),
+        linear-gradient(180deg, rgba(219, 234, 254, 0.52) 0%, rgba(255, 255, 255, 0.88) 100%);
+    border: 1px solid rgba(191, 219, 254, 0.9);
+}
+.gesture-guide-body {
+    position: absolute;
+    left: 50%;
+    top: 26px;
+    width: 72px;
+    height: 104px;
+    transform: translateX(-50%);
+}
+.gesture-guide-body::before,
+.gesture-guide-body::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+}
+.gesture-guide-body::before {
+    top: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(37, 99, 235, 0.16);
+    border: 2px solid rgba(37, 99, 235, 0.26);
+}
+.gesture-guide-body::after {
+    top: 36px;
+    width: 72px;
+    height: 68px;
+    border-radius: 22px 22px 14px 14px;
+    background: rgba(37, 99, 235, 0.12);
+    border: 2px solid rgba(37, 99, 235, 0.2);
+}
+.gesture-guide-hand {
+    position: absolute;
+    left: var(--guide-x, 50%);
+    top: var(--guide-y, 52%);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);
+    box-shadow: 0 10px 18px rgba(249, 115, 22, 0.28);
+    animation: guidePulse 1.6s ease-in-out infinite;
+}
+.gesture-guide-hand::before {
+    content: "";
+    position: absolute;
+    inset: -10px;
+    border-radius: 50%;
+    border: 2px solid rgba(249, 115, 22, 0.22);
+}
+.gesture-guide-arrow {
+    position: absolute;
+    left: var(--guide-x, 50%);
+    top: var(--guide-y, 52%);
+    width: 56px;
+    height: 12px;
+    transform: translate(-50%, -50%) rotate(var(--guide-rotation, 0deg)) scaleX(var(--guide-scale, 1));
+    transform-origin: center;
+    opacity: 0.82;
+}
+.gesture-guide-arrow::before,
+.gesture-guide-arrow::after {
+    content: "";
+    position: absolute;
+}
+.gesture-guide-arrow::before {
+    left: 0;
+    top: 50%;
+    width: 38px;
+    height: 3px;
+    transform: translateY(-50%);
+    border-radius: 999px;
+    background: rgba(2, 132, 199, 0.85);
+}
+.gesture-guide-arrow::after {
+    right: 0;
+    top: 50%;
+    width: 12px;
+    height: 12px;
+    transform: translateY(-50%) rotate(45deg);
+    border-top: 3px solid rgba(2, 132, 199, 0.85);
+    border-right: 3px solid rgba(2, 132, 199, 0.85);
+}
+.gesture-guide-arrow.is-still {
+    display: none;
+}
+.gesture-guide-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+}
+.gesture-guide-chip {
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgba(224, 242, 254, 0.92);
+    color: #0f3d75;
+    font-size: 12px;
+    font-weight: 700;
+}
+.gesture-guide-steps {
+    margin-top: 14px;
+    display: grid;
+    gap: 10px;
+}
+.gesture-guide-step {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+}
+.gesture-guide-step-index {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: rgba(37, 99, 235, 0.12);
+    color: var(--color-text-brand);
+    font-size: 13px;
+    font-weight: 800;
+}
+.gesture-guide-step-copy {
+    color: var(--color-text-primary);
+    font-size: 14px;
+    line-height: 1.55;
+}
+@keyframes guidePulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(0.94); }
+    50% { transform: translate(-50%, -50%) scale(1.08); }
 }
 .gesture-retry-btn { margin-top: 14px; }
 .gesture-progress-track {
@@ -269,11 +436,13 @@ button.secondary { background: #64748b; }
         padding: 16px;
         border-radius: 18px;
     }
+    .gesture-guide-card { padding: 16px; border-radius: 18px; }
     .gesture-diagnostics-card { padding: 16px; border-radius: 18px; }
     .gesture-hand-card { flex-direction: column; align-items: flex-start; }
     .gesture-emoji { width: 82px; height: 82px; border-radius: 22px; }
     .gesture-score-grid { grid-template-columns: 1fr; }
     .gesture-controls { flex-direction: column; }
+    .gesture-guide-header { flex-direction: column; align-items: stretch; }
     .gesture-diagnostic-row, .gesture-diagnostics-header {
         flex-direction: column;
         align-items: stretch;
