@@ -1,10 +1,22 @@
 export const MAX_SEQUENCE = 40;
 export const POSE_IDS = [0, 11, 12, 13, 14, 15, 16];
-const MODEL_URL = new URL("../models/asl_citizen_50.onnx", import.meta.url);
-const METADATA_URL = new URL("../models/asl_citizen_50_metadata.json", import.meta.url);
+const DEFAULT_MODEL_NAME = "everyday_daily_v1";
 const ORT_WASM_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
 
 let cachedModel = null;
+
+function resolveRequestedModelName() {
+    const params = new URLSearchParams(window.location.search);
+    const requested = (params.get("model") || "").trim();
+    return requested || DEFAULT_MODEL_NAME;
+}
+
+function buildModelUrls(modelName) {
+    return {
+        modelUrl: new URL(`../models/${modelName}.onnx`, import.meta.url),
+        metadataUrl: new URL(`../models/${modelName}_metadata.json`, import.meta.url)
+    };
+}
 
 export function prettifyLabel(label) {
     return label
@@ -27,9 +39,12 @@ export async function loadBrowserModel() {
         return cachedModel;
     }
 
-    const metadataResponse = await fetch(METADATA_URL);
+    const modelName = resolveRequestedModelName();
+    const { modelUrl, metadataUrl } = buildModelUrls(modelName);
+
+    const metadataResponse = await fetch(metadataUrl);
     if (!metadataResponse.ok) {
-        throw new Error(`Could not load model metadata (${metadataResponse.status}).`);
+        throw new Error(`Could not load metadata for ${modelName} (${metadataResponse.status}).`);
     }
     const metadata = await metadataResponse.json();
 
@@ -38,13 +53,14 @@ export async function loadBrowserModel() {
     }
 
     globalThis.ort.env.wasm.wasmPaths = ORT_WASM_BASE;
-    const session = await globalThis.ort.InferenceSession.create(MODEL_URL.href, {
+    const session = await globalThis.ort.InferenceSession.create(modelUrl.href, {
         executionProviders: ["wasm"],
         graphOptimizationLevel: "all"
     });
 
     cachedModel = {
         ...metadata,
+        requested_model_name: modelName,
         session,
         inputName: session.inputNames[0],
         outputName: session.outputNames[0]
