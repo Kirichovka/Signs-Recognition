@@ -19,6 +19,123 @@ const FALLBACK_LABELS = [
     "LOVE", "WANT1", "NEED", "COME", "COMEHERE", "GO", "STOP", "FINISH", "GOOD", "BAD",
     "HAPPY", "SAD", "NOW", "MORE", "NOT", "KNOW", "DONTKNOW", "NOTUNDERSTAND", "GOAHEAD", "GREAT"
 ];
+const GESTURE_ZONE_MAP = {
+    HELLO: "head",
+    BYE: "head",
+    YES: "neutral",
+    NO: "mouth",
+    PLEASE: "chest",
+    SORRY: "chest",
+    HELP: "chest",
+    THANKYOU: "mouth",
+    WELCOME1: "chest",
+    EAT1: "mouth",
+    DRINK1: "mouth",
+    WATER: "mouth",
+    MOTHER: "head",
+    FATHER: "head",
+    FAMILY: "chest",
+    HOME: "neutral",
+    HOUSE: "chest",
+    SCHOOL: "chest",
+    WORK: "chest",
+    FRIEND: "chest",
+    LOVE: "chest",
+    WANT1: "chest",
+    NEED: "chest",
+    COME: "neutral",
+    COMEHERE: "neutral",
+    GO: "neutral",
+    STOP: "chest",
+    FINISH: "chest",
+    GOOD: "mouth",
+    BAD: "mouth",
+    HAPPY: "chest",
+    SAD: "head",
+    NOW: "neutral",
+    MORE: "chest",
+    NOT: "neutral",
+    KNOW: "head",
+    DONTKNOW: "head",
+    NOTUNDERSTAND: "head",
+    GOAHEAD: "neutral",
+    GREAT: "chest"
+};
+const GESTURE_MOVE_MAP = {
+    HELLO: "swing",
+    BYE: "swing",
+    THANKYOU: "right",
+    WELCOME1: "right",
+    EAT1: "short",
+    DRINK1: "short",
+    WATER: "short",
+    COME: "right",
+    COMEHERE: "right",
+    GO: "right",
+    STOP: "tap",
+    FINISH: "right",
+    GOOD: "down",
+    BAD: "down",
+    HAPPY: "up",
+    SAD: "down",
+    MORE: "tap",
+    GOAHEAD: "right",
+    GREAT: "down"
+};
+const TWO_HAND_GESTURES = new Set([
+    "HELP",
+    "WELCOME1",
+    "FAMILY",
+    "HOUSE",
+    "SCHOOL",
+    "WORK",
+    "FRIEND",
+    "LOVE",
+    "MORE",
+    "STOP"
+]);
+const GESTURE_COPY = {
+    HELLO: `Raise the greeting hand near the side of the face and give a clear relaxed wave.`,
+    BYE: `Use a short goodbye wave near face level and freeze after the motion finishes.`,
+    YES: `Keep the handshape compact and make the movement small so it stays readable.`,
+    NO: `Keep the sign closer to the mouth area and avoid dropping it too low.`,
+    PLEASE: `Place the sign in front of the chest and keep the circular motion compact.`,
+    SORRY: `Use a chest-level circular motion and finish cleanly in the center of the body.`,
+    HELP: `Keep both hands visible in front of the chest so the support hand is easy to read.`,
+    THANKYOU: `Start near the mouth and move the hand outward without covering the face.`,
+    WELCOME1: `Use both hands if natural and let the movement open outward from the chest.`,
+    EAT1: `Bring the hand toward the mouth in a short eating motion and hold the end shape.`,
+    DRINK1: `Move the hand toward the mouth like a drink action, then pause clearly.`,
+    WATER: `Keep the water handshape near the mouth and avoid large travel afterward.`,
+    MOTHER: `Stay near the face so the contact point reads clearly.`,
+    FATHER: `Keep the sign near the upper face area and hold the final position.`,
+    FAMILY: `Use both hands in front of the chest and keep the shape centered.`,
+    HOME: `Make the sign in neutral space and finish in a stable centered position.`,
+    HOUSE: `Use both hands to outline the shape cleanly in front of the chest.`,
+    SCHOOL: `Keep both hands at chest height and make the contact crisp.`,
+    WORK: `Use a clear two-hand tapping action in front of the torso.`,
+    FRIEND: `Keep both hands visible and make the linking motion neat and compact.`,
+    LOVE: `Cross or close the arms/hands in front of the chest and then hold.`,
+    WANT1: `Keep the sign chest-high and let the movement settle into the final shape.`,
+    NEED: `Show a decisive closing motion and freeze right after it finishes.`,
+    COME: `Let the hand travel toward the body in a clear inviting motion.`,
+    COMEHERE: `Use the calling motion toward yourself and keep the hand centered.`,
+    GO: `Push the sign outward with a clean directional path.`,
+    STOP: `Show the stopping contact clearly with both hands visible if you use them.`,
+    FINISH: `Use a short finishing motion and hold the final handshape right away.`,
+    GOOD: `Start near the mouth and move downward cleanly without rushing.`,
+    BAD: `Begin higher and finish lower so the down direction is obvious.`,
+    HAPPY: `Keep the sign at chest level and use a smooth positive upward motion.`,
+    SAD: `Begin higher on the face and let the motion drop in a controlled way.`,
+    NOW: `Keep the sign compact in neutral space and hold it right after forming it.`,
+    MORE: `Use both hands if natural and make the repeated tap motion even.`,
+    NOT: `Keep the handshape distinct and avoid drifting away from center.`,
+    KNOW: `Start near the forehead and freeze once the ending handshape is formed.`,
+    DONTKNOW: `Use the thought-related motion near the head and keep it compact.`,
+    NOTUNDERSTAND: `Stay near the head area so the confusion/understanding motion is readable.`,
+    GOAHEAD: `Use a clear forward or sideways release gesture and then pause.`,
+    GREAT: `Make the sign strong and centered with a clean finishing hold.`
+};
 
 const gestureTitle = document.getElementById("gesture-title");
 const gestureInstruction = document.getElementById("gesture-instruction");
@@ -84,47 +201,10 @@ function getCurrentGesture() {
 }
 
 function getGestureTrackingSpec(gesture) {
-    const zoneMap = {
-        BITE1: "mouth",
-        BREAKFAST1: "mouth",
-        DINNER1: "mouth",
-        EAT1: "mouth",
-        LUNCH1: "mouth",
-        BELT1: "waist",
-        BACKPACK1: "chest",
-        CALENDAR1: "chest",
-        CANCEL1: "chest",
-        DEAF1: "head",
-        DOG1: "head",
-        SHAVE1: "head",
-        NOON1: "neutral",
-        NIGHT1: "neutral",
-        CLOUD1: "head",
-        BELIEVE1: "head",
-        GUESS1: "head",
-        LOCK1: "chest",
-        MICROSCOPE1: "head",
-        MOVIE1: "head",
-        RESEARCH1: "chest",
-        RIVER1: "neutral",
-        TYPE1: "chest"
-    };
-    const moveMap = {
-        DRAG1: "right",
-        DOWNSIZE1: "down",
-        ELEVATOR1: "up",
-        RIVER1: "left",
-        TYPE1: "tap",
-        ROCKINGCHAIR1: "swing",
-        BASKETBALL1: "bounce",
-        CLOUD1: "float",
-        SHAVE1: "short",
-        MOVIE1: "short"
-    };
-    const twoHands = /BACKPACK|BASKETBALL|CALENDAR|CHRISTMAS|MOVIE|NOON|PARTY|RESEARCH|TYPE/.test(gesture.id);
+    const twoHands = TWO_HAND_GESTURES.has(gesture.id);
     return {
-        zone: zoneMap[gesture.id] || "neutral",
-        movement: moveMap[gesture.id] || "still",
+        zone: GESTURE_ZONE_MAP[gesture.id] || "neutral",
+        movement: GESTURE_MOVE_MAP[gesture.id] || "still",
         twoHands,
         requiredHands: twoHands ? 2 : 1
     };
@@ -133,43 +213,6 @@ function getGestureTrackingSpec(gesture) {
 function getGestureGuide(gesture) {
     const label = gesture.id;
     const title = gesture.title;
-    const zoneMap = {
-        BITE1: "mouth",
-        BREAKFAST1: "mouth",
-        DINNER1: "mouth",
-        EAT1: "mouth",
-        LUNCH1: "mouth",
-        BELT1: "waist",
-        BACKPACK1: "chest",
-        CALENDAR1: "chest",
-        CANCEL1: "chest",
-        DEAF1: "head",
-        DOG1: "head",
-        SHAVE1: "head",
-        NOON1: "neutral",
-        NIGHT1: "neutral",
-        CLOUD1: "head",
-        BELIEVE1: "head",
-        GUESS1: "head",
-        LOCK1: "chest",
-        MICROSCOPE1: "head",
-        MOVIE1: "head",
-        RESEARCH1: "chest",
-        RIVER1: "neutral",
-        TYPE1: "chest"
-    };
-    const moveMap = {
-        DRAG1: "right",
-        DOWNSIZE1: "down",
-        ELEVATOR1: "up",
-        RIVER1: "left",
-        TYPE1: "tap",
-        ROCKINGCHAIR1: "swing",
-        BASKETBALL1: "bounce",
-        CLOUD1: "float",
-        SHAVE1: "short",
-        MOVIE1: "short"
-    };
 
     const spec = getGestureTrackingSpec(gesture);
     const zone = spec.zone;
@@ -204,58 +247,7 @@ function getGestureGuide(gesture) {
         short: "Use a short, compact motion and return to the same position."
     };
 
-    const labelSpecific = {
-        AXE1: `Shape one hand like you are gripping an axe handle and show a compact chopping idea rather than a wide swing.`,
-        BACKPACK1: `Bring both hands near the upper torso like you are referring to backpack straps.`,
-        BASKETBALL1: `Use both hands as if controlling or bouncing a ball in front of the body.`,
-        BEE1: `Keep the motion small and precise so the handshape stays readable.`,
-        BELIEVE1: `Begin closer to the face and let the sign settle outward in a confident shape.`,
-        BELT1: `Place the sign lower, around belt height, with the handshape staying neat and centered.`,
-        BITE1: `Move the hand toward the mouth in a short “bite” action without covering the face.`,
-        BREAKFAST1: `Show the eating-related motion near the mouth and then hold the final shape clearly.`,
-        CALENDAR1: `Use both hands in front of the chest and make the shape look structured, almost like a page or frame.`,
-        CANCEL1: `Make the crossing or stopping motion crisp and deliberate so the model catches the change.`,
-        CANCER1: `Keep the motion compact and repeatable; avoid large travel that changes the landmark pattern.`,
-        CHRISTMAS1: `Use both hands if the sign naturally calls for it and keep the movement centered in the frame.`,
-        CLOUD1: `Lift the sign higher, around head level, with a soft floating shape.`,
-        CONFUSED1: `Keep the expressive motion small and close to the upper body so the hand landmarks stay stable.`,
-        DARK1: `Use a clear closing or covering idea and hold the ending pose for a beat.`,
-        DEAF1: `Stay near the side of the face and make the contact points easy to read.`,
-        DECIDE1: `Finish the sign cleanly and then freeze the final handshape for the model.`,
-        DEMAND1: `Use a firm, forward-facing presentation with a strong final hold.`,
-        DINNER1: `Treat it like an eating sign near the mouth, then pause clearly.`,
-        DOG1: `Keep the sign near the side of the face and avoid moving too far outward.`,
-        DOWNSIZE1: `Start slightly higher and let the movement reduce or drop in a controlled way.`,
-        DRAG1: `Pull the hand sideways or slightly downward with a visible travel path.`,
-        EAT1: `Bring the hand toward the mouth and hold the closing moment clearly.`,
-        EDIT1: `Use a compact corrective motion with the hands staying near chest level.`,
-        ELEVATOR1: `Show a clear vertical lift so the up direction is obvious.`,
-        FINE1: `Keep the sign calm and centered with a clean handshape.`,
-        FOREIGNER1: `Prioritize a readable handshape and central body framing over large expressive movement.`,
-        GUESS1: `Start near the head or temple area and keep the motion thoughtful but compact.`,
-        HALLOWEEN1: `Use the full upper body frame and keep the gesture theatrical but stable.`,
-        HOSPITAL1: `Center both hands and upper torso so the sign stays symmetrical if needed.`,
-        "HURDLE/TRIP1": `Show a blocked or stumbling idea with a short directional motion instead of a big jump.`,
-        LETTUCE1: `Keep the handshape distinct and avoid turning the palm away from the camera.`,
-        LOCK1: `Show the locking action at chest height and pause on the closing position.`,
-        LUNCH1: `Near-mouth placement matters more here than large motion.`,
-        MECHANIC1: `Use a tool-like, deliberate motion and keep it tight in the middle of the frame.`,
-        MICROSCOPE1: `Bring the sign higher, closer to the face, so the small inspection shape is visible.`,
-        MOVIE1: `Use the short repeated action near the upper body and keep both hands visible if you use them.`,
-        NIGHT1: `Let the sign settle into its ending position and hold there.`,
-        NOON1: `Present the sign clearly in neutral space with a precise vertical relationship.`,
-        PARTY1: `If you use two hands, keep both in frame and close to the torso.`,
-        PATIENT2: `Hold the final posture cleanly and avoid extra movement after the sign is formed.`,
-        RECENT1: `Use a small time-related motion and keep it close to the torso.`,
-        RESEARCH1: `Keep both hands active near the chest and make the repeated action even and rhythmic.`,
-        RIVER1: `Let the motion travel sideways smoothly instead of freezing too early.`,
-        ROCKINGCHAIR1: `Use a gentle rocking motion so the temporal pattern shows up in the frame buffer.`,
-        SHAVE1: `Stay near the face and make the movement short and repeatable.`,
-        SPECIAL1: `Give the sign a distinct final shape and hold it steady for the classifier.`,
-        THIRD1: `Emphasize finger configuration first, then hold still.`,
-        TYPE1: `Use both hands if natural, with a short tapping rhythm in front of the chest.`,
-        WHATFOR1: `Keep the question-like motion centered and finish with a brief hold.`
-    };
+    const labelSpecific = GESTURE_COPY;
 
     const chips = [
         zoneTitles[zone],
