@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import hashlib
 from pathlib import Path
 
 import cv2
@@ -151,6 +152,16 @@ def extract_video_features(video_path: Path, max_frames: int, min_visibility: fl
     return array
 
 
+def normalize_signer_id(raw_signer_id) -> int:
+    if raw_signer_id in (None, "", "None"):
+        return -1
+    try:
+        return int(raw_signer_id)
+    except (TypeError, ValueError):
+        digest = hashlib.sha1(str(raw_signer_id).encode("utf-8")).hexdigest()
+        return int(digest[:8], 16)
+
+
 def main() -> int:
     args = parse_args()
     manifest_path = Path(args.manifest).resolve()
@@ -181,7 +192,7 @@ def main() -> int:
             sequences.append(sequence)
             label_ids.append(label_to_index[record["label"]])
             splits.append(record.get("split", "train"))
-            signers.append(-1 if record.get("signer_id") is None else int(record["signer_id"]))
+            signers.append(normalize_signer_id(record.get("signer_id")))
             video_ids.append(record.get("video_id", video_path.stem))
 
     np.savez_compressed(
