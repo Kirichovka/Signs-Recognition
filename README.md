@@ -414,6 +414,7 @@ That server is optional for normal website use.
 - [Training Pipeline](./docs/TRAINING_PIPELINE.md)
 - [Troubleshooting](./docs/TROUBLESHOOTING.md)
 - [Web Export](./docs/WEB_EXPORT.md)
+- [Telegram Notifications](./docs/TELEGRAM_NOTIFICATIONS.md)
 
 ## Short retraining workflow
 
