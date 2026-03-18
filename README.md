@@ -182,6 +182,29 @@ Important note:
 - letters are intentionally not mixed into this model yet
 - alphabet classes currently have too few examples in the available data, so letter recognition should be trained separately
 
+## Alphabet dataset path
+
+For a separate alphabet-only model, the repository now includes a dedicated download path for a static image dataset:
+
+- guide: [Alphabet Dataset](./docs/ALPHABET_DATASET.md)
+- downloader: [`python/download_asl_semcom.py`](/D:/Integration-Game/gesture-trainer-web/python/download_asl_semcom.py)
+
+Recommended alphabet dataset:
+
+- **ASL_SemCom** from Zenodo: [dataset page](https://zenodo.org/records/14635573)
+
+Quick start:
+
+```powershell
+cd D:\Integration-Game\gesture-trainer-web\python
+python download_asl_semcom.py
+```
+
+This path is intentionally separate from the word-level pipeline:
+
+- word model = video / temporal landmarks
+- alphabet model = static image classification
+
 ## Optional local Python backend
 
 Even though the web app now works without a backend, the local FastAPI server is still useful for:
@@ -249,4 +272,3 @@ Requirements:
 - if you see `404` on `/api/health`, you are probably opening an old backend-oriented page or a cached build
 - if the camera throws `NotFoundError`, check browser permissions, the selected device, and whether another app is using the camera
 - if Python feature extraction fails with `libGL.so.1`, install the `libgl1` system package on Linux
-
