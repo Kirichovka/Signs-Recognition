@@ -173,6 +173,7 @@ let cameraReady = false;
 let trackedHands = 0;
 let latestFrameAnalysis = null;
 let latestPredictions = [];
+let latestGeometryDebug = null;
 
 function getModeConfig() {
     return MODE_CONFIG[currentMode];
@@ -411,6 +412,105 @@ function zoneScore(results, zone, handLandmarks) {
     return Math.max(0, 1 - distance / (shoulderSpan * 0.9));
 }
 
+function clamp01(value) {
+    return Math.max(0, Math.min(1, value));
+}
+
+function distance2D(left, right) {
+    return Math.hypot(left.x - right.x, left.y - right.y);
+}
+
+function average(values) {
+    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+}
+
+function getBodyFrame(results) {
+    const pose = results.poseLandmarks || [];
+    const leftShoulder = pose[11];
+    const rightShoulder = pose[12];
+    const shouldersVisible = visiblePoint(leftShoulder) && visiblePoint(rightShoulder);
+    const center = shouldersVisible ? averagePoint([leftShoulder, rightShoulder]) : { x: 0.5, y: 0.52 };
+    const scale = shouldersVisible
+        ? Math.max(0.08, distance2D(leftShoulder, rightShoulder))
+        : 0.18;
+    return { center, scale };
+}
+
+function scoreProximity(actual, target, tolerance) {
+    return clamp01(1 - Math.abs(actual - target) / tolerance);
+}
+
+function scoreLetterAForHand(results, handLandmarks) {
+    const wrist = handLandmarks[0];
+    const thumbTip = handLandmarks[4];
+    const indexMcp = handLandmarks[5];
+    const middleMcp = handLandmarks[9];
+    const ringMcp = handLandmarks[13];
+    const pinkyMcp = handLandmarks[17];
+    const indexTip = handLandmarks[8];
+    const middleTip = handLandmarks[12];
+    const ringTip = handLandmarks[16];
+    const pinkyTip = handLandmarks[20];
+
+    const handScale = Math.max(
+        0.02,
+        average([
+            distance2D(wrist, indexMcp),
+            distance2D(wrist, middleMcp),
+            distance2D(wrist, ringMcp),
+            distance2D(wrist, pinkyMcp)
+        ])
+    );
+
+    const curledRatios = [
+        distance2D(indexTip, indexMcp) / handScale,
+        distance2D(middleTip, middleMcp) / handScale,
+        distance2D(ringTip, ringMcp) / handScale,
+        distance2D(pinkyTip, pinkyMcp) / handScale
+    ];
+    const curledScore = average(curledRatios.map(ratio => scoreProximity(ratio, 0.42, 0.38)));
+
+    const thumbHorizontal = Math.abs((thumbTip.x - indexMcp.x) / handScale);
+    const thumbVertical = Math.abs((thumbTip.y - indexMcp.y) / handScale);
+    const thumbScore = (scoreProximity(thumbHorizontal, 0.58, 0.42) * 0.7) + (scoreProximity(thumbVertical, 0.12, 0.28) * 0.3);
+
+    const fistScore = scoreHandShape(handLandmarks, "fist");
+
+    const bodyFrame = getBodyFrame(results);
+    const wristX = (wrist.x - bodyFrame.center.x) / bodyFrame.scale;
+    const wristY = (wrist.y - bodyFrame.center.y) / bodyFrame.scale;
+    const bodyPositionScore = (scoreProximity(Math.abs(wristX), 0.55, 0.8) * 0.45) + (scoreProximity(wristY, 0.15, 0.7) * 0.55);
+
+    const finalScore = (fistScore * 0.4) + (curledScore * 0.25) + (thumbScore * 0.2) + (bodyPositionScore * 0.15);
+    return {
+        score: finalScore,
+        debug: {
+            fistScore,
+            curledScore,
+            thumbScore,
+            bodyPositionScore,
+            wristX,
+            wristY,
+            curledRatios,
+            thumbHorizontal,
+            thumbVertical
+        }
+    };
+}
+
+function scoreLetterA(results) {
+    const hands = [results.leftHandLandmarks, results.rightHandLandmarks].filter(Boolean);
+    if (!hands.length) {
+        return { label: "A", score: 0, debug: null };
+    }
+    const candidates = hands.map(hand => scoreLetterAForHand(results, hand)).sort((left, right) => right.score - left.score);
+    return {
+        label: "A",
+        score: candidates[0].score,
+        debug: candidates[0].debug
+    };
+}
+
 function bestHandScores(results, spec) {
     const hands = [results.leftHandLandmarks, results.rightHandLandmarks].filter(Boolean);
     if (!hands.length) { return { shape: 0, zone: 0, visibleHands: 0 }; }
@@ -426,6 +526,10 @@ function bestHandScores(results, spec) {
 }
 
 function scoreGesture(results, label) {
+    if (isAlphabetMode() && label === "A") {
+        const aScore = scoreLetterA(results);
+        return { label, score: aScore.score, debug: aScore.debug };
+    }
     const spec = getGestureSpec(label);
     const handInfo = bestHandScores(results, spec);
     const handCountScore = Math.min(1, handInfo.visibleHands / spec.hands);
@@ -437,7 +541,9 @@ function scoreGesture(results, label) {
 }
 
 function buildPredictions(results) {
-    return gestures.map(gesture => scoreGesture(results, gesture.id)).sort((a, b) => b.score - a.score).slice(0, 5);
+    const scored = gestures.map(gesture => scoreGesture(results, gesture.id)).sort((a, b) => b.score - a.score);
+    latestGeometryDebug = scored.find(item => item.label === "A")?.debug || null;
+    return scored.slice(0, 5);
 }
 
 function analyzeCurrentFrame(results) {
@@ -544,8 +650,7 @@ function renderDiagnosticRows(rows) {
 
 async function collectDiagnostics(extra = {}) {
     const permissionState = await getCameraPermissionState();
-    diagnosticsSummary.textContent = extra.summary || "This page now uses a last-frame landmark template matcher with a configurable tolerance.";
-    renderDiagnosticRows([
+    const rows = [
         { label: "Mode", value: getModeConfig().title, badge: getModeConfig().title, tone: "is-good" },
         { label: "Matcher", value: `Template score with tolerance ${getModeConfig().tolerance.toFixed(2)}.`, badge: "Template", tone: "is-good" },
         { label: isAlphabetMode() ? "Target letter" : "Target sign", value: getCurrentGesture().title, badge: `${currentGestureIndex + 1}/${gestures.length}`, tone: "is-good" },
@@ -554,7 +659,19 @@ async function collectDiagnostics(extra = {}) {
         { label: "Tracked hands", value: trackedHands ? `Detected ${trackedHands} hand(s) in the current frame.` : "No hands are currently visible in the frame.", badge: `${trackedHands}`, tone: trackedHands ? "is-good" : "is-neutral" },
         { label: "Visibility coach", value: latestFrameAnalysis?.primaryWarning || "Framing looks usable for template matching.", badge: latestFrameAnalysis?.primaryWarning ? "Adjust" : "Good", tone: latestFrameAnalysis?.primaryWarning ? "is-bad" : "is-good" },
         { label: "Closest match", value: latestPredictions[0] ? `${prettifyLabel(latestPredictions[0].label)} at ${Math.round(latestPredictions[0].score * 100)}%.` : "No frame has been scored yet.", badge: latestPredictions[0] ? "Scored" : "Idle", tone: latestPredictions[0] ? "is-good" : "is-neutral" }
-    ]);
+    ];
+
+    if (isAlphabetMode() && getCurrentGesture().id === "A" && latestGeometryDebug) {
+        rows.push({
+            label: "A geometry",
+            value: `Fist ${Math.round(latestGeometryDebug.fistScore * 100)}%, curled ${Math.round(latestGeometryDebug.curledScore * 100)}%, thumb ${Math.round(latestGeometryDebug.thumbScore * 100)}%, body ${Math.round(latestGeometryDebug.bodyPositionScore * 100)}%.`,
+            badge: "A debug",
+            tone: "is-good"
+        });
+    }
+
+    diagnosticsSummary.textContent = extra.summary || "This page now uses a last-frame landmark template matcher with a configurable tolerance.";
+    renderDiagnosticRows(rows);
 }
 
 async function setupMatcher() {
