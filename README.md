@@ -144,3 +144,45 @@ Suggested Brev session target:
 - up to `20` validation videos per class
 
 This is the best balance in this repo right now between realism, speed, and GPU cost.
+
+## Alternative: ASL Citizen quick start
+
+If WLASL external links are too unreliable, switch to `ASL Citizen`. It is distributed as one official archive, which is much more practical for a time-limited GPU session.
+
+1. Build a manifest from the extracted ASL Citizen dataset:
+
+```powershell
+cd D:\Integration-Game\gesture-trainer-web\python
+python build_asl_citizen_manifest.py `
+  --dataset-root /workspace/datasets/asl_citizen/ASL_Citizen `
+  --output /workspace/datasets/asl_citizen/asl_citizen_manifest.jsonl
+```
+
+2. Prepare a 50-class subset:
+
+```powershell
+python prepare_wlasl_subset.py `
+  --manifest /workspace/datasets/asl_citizen/asl_citizen_manifest.jsonl `
+  --output /workspace/datasets/asl_citizen/asl_citizen_50_manifest.jsonl `
+  --stats-output /workspace/datasets/asl_citizen/asl_citizen_50_stats.json `
+  --num-classes 50 `
+  --min-samples-per-class 20 `
+  --max-train-per-class 80 `
+  --max-val-per-class 20
+```
+
+3. Extract features and train exactly the same way as for WLASL:
+
+```powershell
+python extract_sign_features.py `
+  --manifest /workspace/datasets/asl_citizen/asl_citizen_50_manifest.jsonl `
+  --output /workspace/datasets/asl_citizen/asl_citizen_50_features.npz `
+  --max-frames 40
+
+python train_sign_model.py `
+  --features /workspace/datasets/asl_citizen/asl_citizen_50_features.npz `
+  --output-dir /workspace/datasets/asl_citizen/asl_citizen_50_run `
+  --epochs 16 `
+  --batch-size 32 `
+  --hidden-size 192
+```
