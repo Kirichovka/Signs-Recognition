@@ -39,6 +39,8 @@ def pick_video_column(record: dict) -> str:
         "video_name",
         "video",
         "video_id",
+        "Video file",
+        "video file",
         "instance_name",
         "id",
         "sample_name",
@@ -54,6 +56,7 @@ def pick_video_column(record: dict) -> str:
 def pick_label_column(record: dict) -> str:
     candidates = [
         "gloss",
+        "Gloss",
         "sign",
         "label",
         "lemma",
@@ -124,7 +127,7 @@ def main() -> int:
                 "video_id": video_path.stem,
                 "video_path": str(video_path),
                 "split": record["split"],
-                "signer_id": record.get("signer_id") or record.get("participant_id") or record.get("signer"),
+                "signer_id": record.get("signer_id") or record.get("participant_id") or record.get("Participant ID") or record.get("signer"),
                 "meta": record,
             }
             stream.write(json.dumps(item, ensure_ascii=True) + "\n")
