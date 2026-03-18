@@ -357,6 +357,20 @@ python run_model_pipelines.py ^
   --publish-alphabet
 ```
 
+Telegram notification on success or failure:
+
+```powershell
+cd D:\Integration-Game\gesture-trainer-web\python
+$env:TELEGRAM_BOT_TOKEN="your_bot_token"
+$env:TELEGRAM_CHAT_ID="your_chat_id"
+python run_model_pipelines.py ^
+  --mode all ^
+  --word-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_citizen\ASL_Citizen ^
+  --alphabet-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_semcom\ASL_SemCom ^
+  --export-web ^
+  --notify-telegram
+```
+
 ## Unified model export for web
 
 If you want one command for converting trained checkpoints into browser-ready ONNX artifacts:

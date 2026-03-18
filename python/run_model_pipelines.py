@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 
@@ -36,6 +41,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--publish-alphabet", action="store_true", help="When used with --export-web, publish the exported alphabet model into the models directory.")
     parser.add_argument("--web-export-output-root", default="", help="Optional output root for web exports.")
     parser.add_argument("--web-models-dir", default="", help="Optional models directory used by unified web export.")
+    parser.add_argument("--notify-telegram", action="store_true", help="Send Telegram notification when the launcher finishes or fails.")
+    parser.add_argument("--telegram-bot-token", default="", help="Telegram bot token. Falls back to TELEGRAM_BOT_TOKEN.")
+    parser.add_argument("--telegram-chat-id", default="", help="Telegram chat id. Falls back to TELEGRAM_CHAT_ID.")
     parser.add_argument("--force", action="store_true", help="Forward force mode to child pipelines.")
     return parser.parse_args()
 
@@ -46,6 +54,48 @@ def run_step(command: list[str], cwd: Path) -> None:
     subprocess.run(command, cwd=cwd, check=True)
 
 
+def send_telegram_notification(bot_token: str, chat_id: str, message: str) -> None:
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = urllib.parse.urlencode(
+        {
+            "chat_id": chat_id,
+            "text": message,
+            "disable_web_page_preview": True,
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(url, data=payload, method="POST")
+    with urllib.request.urlopen(request, timeout=30) as response:
+        response.read()
+
+
+def build_summary_message(
+    *,
+    success: bool,
+    args: argparse.Namespace,
+    duration_seconds: float,
+    word_run_root: Path | None,
+    alphabet_run_root: Path | None,
+    error_text: str = "",
+) -> str:
+    status = "SUCCESS" if success else "FAILED"
+    lines = [
+        f"Sign pipeline {status}",
+        f"Mode: {args.mode}",
+        f"Duration: {duration_seconds / 60:.1f} min",
+    ]
+    if word_run_root is not None:
+        lines.append(f"Word run: {word_run_root}")
+    if alphabet_run_root is not None:
+        lines.append(f"Alphabet run: {alphabet_run_root}")
+    if args.export_web:
+        lines.append("Web export: enabled")
+    if args.publish_word or args.publish_alphabet:
+        lines.append("Publish to models/: enabled")
+    if error_text:
+        lines.append(f"Error: {error_text}")
+    return "\n".join(lines)
+
+
 def main() -> int:
     args = parse_args()
     repo_root = Path(__file__).resolve().parents[1]
@@ -53,108 +103,160 @@ def main() -> int:
     python_exe = sys.executable
     word_run_root: Path | None = None
     alphabet_run_root: Path | None = None
+    started_at = time.time()
+    telegram_bot_token = args.telegram_bot_token or os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    telegram_chat_id = args.telegram_chat_id or os.environ.get("TELEGRAM_CHAT_ID", "")
 
-    if args.bootstrap_datasets:
-        bootstrap_command = [
-            python_exe,
-            str(python_dir / "download_sign_datasets.py"),
-        ]
-        if args.datasets_root:
-            bootstrap_command.extend(["--datasets-root", str(Path(args.datasets_root).resolve())])
-        if args.artifacts_root:
-            bootstrap_command.extend(["--artifacts-root", str(Path(args.artifacts_root).resolve())])
-        if args.skip_bootstrap_asl_citizen:
-            bootstrap_command.append("--skip-asl-citizen")
-        if args.skip_bootstrap_ms_asl:
-            bootstrap_command.append("--skip-ms-asl")
-        if args.skip_bootstrap_asl_semcom:
-            bootstrap_command.append("--skip-asl-semcom")
-        if args.download_only:
-            bootstrap_command.append("--download-only")
-        if args.force:
-            bootstrap_command.append("--force-download")
-        run_step(bootstrap_command, cwd=repo_root)
+    if args.notify_telegram and (not telegram_bot_token or not telegram_chat_id):
+        raise ValueError(
+            "Telegram notification requires --telegram-bot-token/--telegram-chat-id or TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID."
+        )
 
-        if args.download_only:
-            print()
-            print("Bootstrap download-only mode completed. No training pipelines were started.")
-            return 0
+    try:
+        if args.bootstrap_datasets:
+            bootstrap_command = [
+                python_exe,
+                str(python_dir / "download_sign_datasets.py"),
+            ]
+            if args.datasets_root:
+                bootstrap_command.extend(["--datasets-root", str(Path(args.datasets_root).resolve())])
+            if args.artifacts_root:
+                bootstrap_command.extend(["--artifacts-root", str(Path(args.artifacts_root).resolve())])
+            if args.skip_bootstrap_asl_citizen:
+                bootstrap_command.append("--skip-asl-citizen")
+            if args.skip_bootstrap_ms_asl:
+                bootstrap_command.append("--skip-ms-asl")
+            if args.skip_bootstrap_asl_semcom:
+                bootstrap_command.append("--skip-asl-semcom")
+            if args.download_only:
+                bootstrap_command.append("--download-only")
+            if args.force:
+                bootstrap_command.append("--force-download")
+            run_step(bootstrap_command, cwd=repo_root)
 
-    if args.mode in {"all", "word"}:
-        if not args.word_dataset_root:
-            raise ValueError("--word-dataset-root is required for mode=word or mode=all")
-        word_command = [
-            python_exe,
-            str(python_dir / "run_word_model_pipeline.py"),
-            "--dataset-root",
-            str(Path(args.word_dataset_root).resolve()),
-            "--run-name",
-            args.word_run_name,
-        ]
-        if args.word_extra_manifest:
-            word_command.extend(["--extra-manifest", str(Path(args.word_extra_manifest).resolve())])
-        if args.word_extra_label_map:
-            word_command.extend(["--extra-label-map", str(Path(args.word_extra_label_map).resolve())])
-        if args.word_output_root:
-            word_command.extend(["--output-root", str(Path(args.word_output_root).resolve())])
-        if args.force:
-            word_command.append("--force")
-        run_step(word_command, cwd=repo_root)
-        word_run_root = Path(args.word_output_root).resolve() if args.word_output_root else (repo_root / "artifacts" / "word_model" / args.word_run_name)
-
-    if args.mode in {"all", "alphabet"}:
-        if not args.alphabet_dataset_root:
-            raise ValueError("--alphabet-dataset-root is required for mode=alphabet or mode=all")
-        alphabet_command = [
-            python_exe,
-            str(python_dir / "run_alphabet_model_pipeline.py"),
-            "--dataset-root",
-            str(Path(args.alphabet_dataset_root).resolve()),
-            "--run-name",
-            args.alphabet_run_name,
-        ]
-        if args.alphabet_output_root:
-            alphabet_command.extend(["--output-root", str(Path(args.alphabet_output_root).resolve())])
-        if args.force:
-            alphabet_command.append("--force")
-        run_step(alphabet_command, cwd=repo_root)
-        alphabet_run_root = Path(args.alphabet_output_root).resolve() if args.alphabet_output_root else (repo_root / "artifacts" / "alphabet_model" / args.alphabet_run_name)
-
-    if args.export_web:
-        export_command = [
-            python_exe,
-            str(python_dir / "export_models_for_web.py"),
-            "--mode",
-            args.mode,
-        ]
-        if args.web_export_output_root:
-            export_command.extend(["--output-root", str(Path(args.web_export_output_root).resolve())])
-        if args.web_models_dir:
-            export_command.extend(["--models-dir", str(Path(args.web_models_dir).resolve())])
-        if args.publish_word:
-            export_command.append("--publish-word")
-        if args.publish_alphabet:
-            export_command.append("--publish-alphabet")
+            if args.download_only:
+                print()
+                print("Bootstrap download-only mode completed. No training pipelines were started.")
+                if args.notify_telegram:
+                    send_telegram_notification(
+                        telegram_bot_token,
+                        telegram_chat_id,
+                        build_summary_message(
+                            success=True,
+                            args=args,
+                            duration_seconds=time.time() - started_at,
+                            word_run_root=word_run_root,
+                            alphabet_run_root=alphabet_run_root,
+                        ),
+                    )
+                return 0
 
         if args.mode in {"all", "word"}:
-            run_root = word_run_root or (Path(args.word_output_root).resolve() if args.word_output_root else (repo_root / "artifacts" / "word_model" / args.word_run_name))
-            export_command.extend([
-                "--word-checkpoint",
-                str(run_root / "training_run" / "best_model.pt"),
-                "--word-name",
+            if not args.word_dataset_root:
+                raise ValueError("--word-dataset-root is required for mode=word or mode=all")
+            word_command = [
+                python_exe,
+                str(python_dir / "run_word_model_pipeline.py"),
+                "--dataset-root",
+                str(Path(args.word_dataset_root).resolve()),
+                "--run-name",
                 args.word_run_name,
-            ])
+            ]
+            if args.word_extra_manifest:
+                word_command.extend(["--extra-manifest", str(Path(args.word_extra_manifest).resolve())])
+            if args.word_extra_label_map:
+                word_command.extend(["--extra-label-map", str(Path(args.word_extra_label_map).resolve())])
+            if args.word_output_root:
+                word_command.extend(["--output-root", str(Path(args.word_output_root).resolve())])
+            if args.force:
+                word_command.append("--force")
+            run_step(word_command, cwd=repo_root)
+            word_run_root = Path(args.word_output_root).resolve() if args.word_output_root else (repo_root / "artifacts" / "word_model" / args.word_run_name)
 
         if args.mode in {"all", "alphabet"}:
-            run_root = alphabet_run_root or (Path(args.alphabet_output_root).resolve() if args.alphabet_output_root else (repo_root / "artifacts" / "alphabet_model" / args.alphabet_run_name))
-            export_command.extend([
-                "--alphabet-checkpoint",
-                str(run_root / "training_run" / "best_model.pt"),
-                "--alphabet-name",
+            if not args.alphabet_dataset_root:
+                raise ValueError("--alphabet-dataset-root is required for mode=alphabet or mode=all")
+            alphabet_command = [
+                python_exe,
+                str(python_dir / "run_alphabet_model_pipeline.py"),
+                "--dataset-root",
+                str(Path(args.alphabet_dataset_root).resolve()),
+                "--run-name",
                 args.alphabet_run_name,
-            ])
+            ]
+            if args.alphabet_output_root:
+                alphabet_command.extend(["--output-root", str(Path(args.alphabet_output_root).resolve())])
+            if args.force:
+                alphabet_command.append("--force")
+            run_step(alphabet_command, cwd=repo_root)
+            alphabet_run_root = Path(args.alphabet_output_root).resolve() if args.alphabet_output_root else (repo_root / "artifacts" / "alphabet_model" / args.alphabet_run_name)
 
-        run_step(export_command, cwd=repo_root)
+        if args.export_web:
+            export_command = [
+                python_exe,
+                str(python_dir / "export_models_for_web.py"),
+                "--mode",
+                args.mode,
+            ]
+            if args.web_export_output_root:
+                export_command.extend(["--output-root", str(Path(args.web_export_output_root).resolve())])
+            if args.web_models_dir:
+                export_command.extend(["--models-dir", str(Path(args.web_models_dir).resolve())])
+            if args.publish_word:
+                export_command.append("--publish-word")
+            if args.publish_alphabet:
+                export_command.append("--publish-alphabet")
+
+            if args.mode in {"all", "word"}:
+                run_root = word_run_root or (Path(args.word_output_root).resolve() if args.word_output_root else (repo_root / "artifacts" / "word_model" / args.word_run_name))
+                export_command.extend([
+                    "--word-checkpoint",
+                    str(run_root / "training_run" / "best_model.pt"),
+                    "--word-name",
+                    args.word_run_name,
+                ])
+
+            if args.mode in {"all", "alphabet"}:
+                run_root = alphabet_run_root or (Path(args.alphabet_output_root).resolve() if args.alphabet_output_root else (repo_root / "artifacts" / "alphabet_model" / args.alphabet_run_name))
+                export_command.extend([
+                    "--alphabet-checkpoint",
+                    str(run_root / "training_run" / "best_model.pt"),
+                    "--alphabet-name",
+                    args.alphabet_run_name,
+                ])
+
+            run_step(export_command, cwd=repo_root)
+
+        if args.notify_telegram:
+            send_telegram_notification(
+                telegram_bot_token,
+                telegram_chat_id,
+                build_summary_message(
+                    success=True,
+                    args=args,
+                    duration_seconds=time.time() - started_at,
+                    word_run_root=word_run_root,
+                    alphabet_run_root=alphabet_run_root,
+                ),
+            )
+    except Exception as error:
+        if args.notify_telegram:
+            try:
+                send_telegram_notification(
+                    telegram_bot_token,
+                    telegram_chat_id,
+                    build_summary_message(
+                        success=False,
+                        args=args,
+                        duration_seconds=time.time() - started_at,
+                        word_run_root=word_run_root,
+                        alphabet_run_root=alphabet_run_root,
+                        error_text=str(error),
+                    ),
+                )
+            except Exception as notify_error:
+                print(f"Telegram notification failed: {notify_error}")
+        raise
 
     print()
     print("Requested pipelines completed successfully.")
