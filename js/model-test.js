@@ -21,7 +21,8 @@ const resetBufferBtn = document.getElementById("reset-buffer-btn");
 
 const canvasCtx = outputCanvas.getContext("2d");
 
-let camera = null;
+let activeStream = null;
+let animationFrameId = 0;
 let holistic = null;
 let frameBuffer = [];
 let predictionInFlight = false;
@@ -262,10 +263,16 @@ async function startCamera() {
     cameraState.textContent = "Starting camera...";
     cameraReady = false;
     updateDiagnostics();
-    if (camera) {
-        camera.stop();
-        camera = null;
+
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = 0;
     }
+    if (activeStream) {
+        activeStream.getTracks().forEach(track => track.stop());
+        activeStream = null;
+    }
+
     if (!holistic) {
         holistic = new window.Holistic({
             locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
@@ -288,16 +295,57 @@ async function startCamera() {
         });
     }
 
-    camera = new window.Camera(inputVideo, {
-        onFrame: async () => {
-            await holistic.send({ image: inputVideo });
-        },
-        width: 1280,
-        height: 720
-    });
-
     try {
-        await camera.start();
+        const attempts = [
+            {
+                audio: false,
+                video: {
+                    facingMode: "user",
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
+            },
+            {
+                audio: false,
+                video: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
+            },
+            {
+                audio: false,
+                video: true
+            }
+        ];
+        let lastError = null;
+        for (const constraints of attempts) {
+            try {
+                activeStream = await navigator.mediaDevices.getUserMedia(constraints);
+                break;
+            } catch (error) {
+                lastError = error;
+                if (error?.name !== "NotFoundError" && error?.name !== "OverconstrainedError") {
+                    throw error;
+                }
+            }
+        }
+        if (!activeStream) {
+            throw lastError || new Error("Camera access failed.");
+        }
+
+        inputVideo.srcObject = activeStream;
+        await inputVideo.play();
+
+        const processFrame = async () => {
+            if (!activeStream || inputVideo.readyState < 2) {
+                animationFrameId = requestAnimationFrame(processFrame);
+                return;
+            }
+            await holistic.send({ image: inputVideo });
+            animationFrameId = requestAnimationFrame(processFrame);
+        };
+
+        animationFrameId = requestAnimationFrame(processFrame);
     } catch (error) {
         console.error(error);
         cameraState.textContent = "Camera failed";
