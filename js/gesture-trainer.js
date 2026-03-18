@@ -514,15 +514,44 @@ async function startCamera() {
     cameraState.textContent = "Starting camera...";
     gestureStatus.textContent = "Waiting for camera access.";
     await collectDiagnostics();
-    try {
-        activeStream = await navigator.mediaDevices.getUserMedia({
+    const attempts = [
+        {
             audio: false,
             video: {
                 facingMode: "user",
                 width: { ideal: 1280 },
                 height: { ideal: 720 }
             }
-        });
+        },
+        {
+            audio: false,
+            video: {
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            }
+        },
+        {
+            audio: false,
+            video: true
+        }
+    ];
+
+    try {
+        let lastError = null;
+        for (const constraints of attempts) {
+            try {
+                activeStream = await navigator.mediaDevices.getUserMedia(constraints);
+                break;
+            } catch (error) {
+                lastError = error;
+                if (error?.name !== "NotFoundError" && error?.name !== "OverconstrainedError") {
+                    throw error;
+                }
+            }
+        }
+        if (!activeStream) {
+            throw lastError || new Error("Camera access failed.");
+        }
         inputVideo.srcObject = activeStream;
         await inputVideo.play();
         cameraState.textContent = "Camera is live";
