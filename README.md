@@ -48,6 +48,26 @@ Controls:
 
 ## Training a real sign-language model
 
+### Curated everyday-word subset
+
+You can prepare a hand-picked ASL Citizen subset from an explicit label list instead of auto-selecting the most frequent classes.
+
+Example label set:
+
+- [`python/label_sets/asl_citizen_daily_v1.txt`](D:/Integration-Game/gesture-trainer-web/python/label_sets/asl_citizen_daily_v1.txt)
+
+Example command:
+
+```powershell
+python prepare_wlasl_subset.py `
+  --manifest ~/workspace/datasets/asl_citizen/asl_citizen_manifest.jsonl `
+  --labels-file ~/workspace/Signs-Recognition/python/label_sets/asl_citizen_daily_v1.txt `
+  --output ~/workspace/datasets/asl_citizen/asl_citizen_daily_v1_manifest.jsonl `
+  --stats-output ~/workspace/datasets/asl_citizen/asl_citizen_daily_v1_stats.json `
+  --max-train-per-class 120 `
+  --max-val-per-class 30
+```
+
 The current webcam demo is still a prototype. For real sign-language recognition, the next step is to train on a real isolated-sign video dataset and switch from hand-written rules to a temporal model.
 
 Recommended starting point:

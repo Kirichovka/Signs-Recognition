@@ -24,6 +24,11 @@ def parse_args() -> argparse.Namespace:
         help="Number of labels to keep, ranked by available sample count.",
     )
     parser.add_argument(
+        "--labels-file",
+        default="",
+        help="Optional text file with one exact label per line. If provided, these labels are used instead of auto-selecting the top classes.",
+    )
+    parser.add_argument(
         "--min-samples-per-class",
         type=int,
         default=20,
@@ -71,6 +76,18 @@ def choose_labels(records: list[dict], num_classes: int, min_samples_per_class: 
     eligible = [(label, count) for label, count in counts.items() if count >= min_samples_per_class]
     eligible.sort(key=lambda item: (-item[1], item[0]))
     return [label for label, _ in eligible[:num_classes]]
+
+
+def load_explicit_labels(path: Path) -> list[str]:
+    labels = []
+    with path.open("r", encoding="utf-8") as stream:
+        for line in stream:
+            label = line.strip()
+            if label and not label.startswith("#"):
+                labels.append(label)
+    if not labels:
+        raise ValueError(f"No labels were found in {path}.")
+    return labels
 
 
 def build_subset(
@@ -124,11 +141,19 @@ def main() -> int:
     }
 
     records = load_manifest(manifest_path)
-    selected_labels = choose_labels(records, args.num_classes, args.min_samples_per_class)
-    if len(selected_labels) < args.num_classes:
-        raise ValueError(
-            f"Only found {len(selected_labels)} eligible classes, fewer than requested {args.num_classes}."
-        )
+    if args.labels_file:
+        labels_path = Path(args.labels_file).resolve()
+        selected_labels = load_explicit_labels(labels_path)
+        available_labels = Counter(record["label"] for record in records)
+        missing = [label for label in selected_labels if label not in available_labels]
+        if missing:
+            raise ValueError(f"These labels were not found in the manifest: {missing}")
+    else:
+        selected_labels = choose_labels(records, args.num_classes, args.min_samples_per_class)
+        if len(selected_labels) < args.num_classes:
+            raise ValueError(
+                f"Only found {len(selected_labels)} eligible classes, fewer than requested {args.num_classes}."
+            )
 
     subset_records, stats = build_subset(
         records=records,
@@ -149,6 +174,8 @@ def main() -> int:
     )
 
     print(f"Selected {len(selected_labels)} classes")
+    if args.labels_file:
+        print(f"Used explicit labels from {Path(args.labels_file).resolve()}")
     print(f"Wrote {len(subset_records)} subset samples to {output_path}")
     print(f"Wrote subset stats to {stats_output_path}")
     return 0
