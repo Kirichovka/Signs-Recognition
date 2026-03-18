@@ -273,6 +273,55 @@ For duplicate and leakage checks in video datasets:
 
 - scanner: [`python/check_video_duplicates.py`](/D:/Integration-Game/gesture-trainer-web/python/check_video_duplicates.py)
 
+## One-command alphabet model pipeline
+
+The repository now also includes a dedicated alphabet-model orchestration path:
+
+- script: [`python/run_alphabet_model_pipeline.py`](/D:/Integration-Game/gesture-trainer-web/python/run_alphabet_model_pipeline.py)
+- guide: [Alphabet Model Pipeline](./docs/ALPHABET_MODEL_PIPELINE.md)
+
+It can:
+
+- run duplicate image checks
+- train a static alphabet classifier
+- export ONNX
+
+## Run one or both pipelines from a single launcher
+
+Top-level launcher:
+
+- [`python/run_model_pipelines.py`](/D:/Integration-Game/gesture-trainer-web/python/run_model_pipelines.py)
+
+Examples:
+
+Run both:
+
+```powershell
+cd D:\Integration-Game\gesture-trainer-web\python
+python run_model_pipelines.py ^
+  --mode all ^
+  --word-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_citizen\ASL_Citizen ^
+  --alphabet-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_semcom\ASL_SemCom
+```
+
+Run only the word model:
+
+```powershell
+cd D:\Integration-Game\gesture-trainer-web\python
+python run_model_pipelines.py ^
+  --mode word ^
+  --word-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_citizen\ASL_Citizen
+```
+
+Run only the alphabet model:
+
+```powershell
+cd D:\Integration-Game\gesture-trainer-web\python
+python run_model_pipelines.py ^
+  --mode alphabet ^
+  --alphabet-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_semcom\ASL_SemCom
+```
+
 ## Optional local Python backend
 
 Even though the web app now works without a backend, the local FastAPI server is still useful for:
