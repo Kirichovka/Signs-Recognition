@@ -6,7 +6,7 @@ import {
 } from "./sign-model-runtime.js?v=20260318-9";
 
 const HOLD_SECONDS = 1.0;
-const SCORE_THRESHOLD = 0.7;
+const SCORE_THRESHOLD = 0.4;
 const LETTER_A_POINTS = [0, 4, 8, 12, 20];
 const FIST_TEMPLATE = [[0, 0], [-0.8, -0.15], [-0.35, -0.42], [0, -0.38], [0.55, -0.25]];
 
@@ -281,7 +281,7 @@ function renderDiagnostics(permissionState) {
     if (latestDebug) {
         rows.push({
             label: "Geometry debug",
-            value: `Finger bend ${Math.round(latestDebug.curledScore * 100)}%, thumb ${Math.round(latestDebug.thumbScore * 100)}%, body ${Math.round(latestDebug.bodyPositionScore * 100)}%. Allowed mismatch: 30%.`,
+            value: `Finger bend ${Math.round(latestDebug.curledScore * 100)}%, thumb ${Math.round(latestDebug.thumbScore * 100)}%, body ${Math.round(latestDebug.bodyPositionScore * 100)}%. Allowed mismatch: 60%.`,
             badge: "Debug",
             tone: "is-good"
         });

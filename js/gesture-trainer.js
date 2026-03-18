@@ -9,7 +9,7 @@ import {
 
 const HOLD_SECONDS = 1.0;
 const SCORE_THRESHOLD = 0.72;
-const LETTER_A_THRESHOLD = 0.7;
+const LETTER_A_THRESHOLD = 0.4;
 const FRAME_SKIP = 4;
 const ALPHABET_TOLERANCE = 0.18;
 const WORD_TOLERANCE = 0.24;
@@ -695,7 +695,7 @@ async function collectDiagnostics(extra = {}) {
     if (isAlphabetMode() && getCurrentGesture().id === "A" && latestGeometryDebug) {
         rows.push({
             label: "A geometry",
-            value: `Finger bend ${Math.round(latestGeometryDebug.curledScore * 100)}%, thumb ${Math.round(latestGeometryDebug.thumbScore * 100)}%, body ${Math.round(latestGeometryDebug.bodyPositionScore * 100)}%. Allowed mismatch: 30%.`,
+            value: `Finger bend ${Math.round(latestGeometryDebug.curledScore * 100)}%, thumb ${Math.round(latestGeometryDebug.thumbScore * 100)}%, body ${Math.round(latestGeometryDebug.bodyPositionScore * 100)}%. Allowed mismatch: 60%.`,
             badge: "A debug",
             tone: "is-good"
         });
