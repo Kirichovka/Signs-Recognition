@@ -2,6 +2,7 @@ mediapipe==0.10.21
 opencv-python-headless==4.11.0.86
 numpy==1.26.4
 torch==2.7.0
+onnx
 tqdm==4.67.1
 fastapi==0.115.12
 uvicorn==0.34.0
