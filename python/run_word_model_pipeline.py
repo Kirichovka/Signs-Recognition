@@ -42,6 +42,32 @@ def parse_args() -> argparse.Namespace:
         help="Optional CSV mapping extra-manifest labels into the base label space.",
     )
     parser.add_argument(
+        "--auto-ms-asl-root",
+        default="",
+        help="Optional extracted MS-ASL annotations root. When provided, the pipeline can auto-prepare MS-ASL train augmentation.",
+    )
+    parser.add_argument(
+        "--auto-ms-asl-clips-root",
+        default="",
+        help="Optional local MS-ASL clip root. Defaults to <output-root>/ms_asl_clips when auto-MS-ASL mode is enabled.",
+    )
+    parser.add_argument(
+        "--auto-ms-asl-splits",
+        default="train",
+        help="Comma-separated MS-ASL splits used in auto augmentation mode. Defaults to train only.",
+    )
+    parser.add_argument(
+        "--auto-ms-asl-max-clips-per-label",
+        type=int,
+        default=40,
+        help="Maximum MS-ASL clips per mapped label in auto augmentation mode.",
+    )
+    parser.add_argument(
+        "--auto-ms-asl-skip-download",
+        action="store_true",
+        help="In auto-MS-ASL mode, reuse any existing local clips and skip yt-dlp download/clipping.",
+    )
+    parser.add_argument(
         "--max-train-per-class",
         type=int,
         default=120,
@@ -121,6 +147,9 @@ def main() -> int:
 
     python_exe = sys.executable
 
+    if args.extra_manifest and args.auto_ms_asl_root:
+        raise ValueError("Use either --extra-manifest or --auto-ms-asl-root, not both at the same time.")
+
     if args.force or not manifest_path.exists():
         ensure_parent(manifest_path)
         run_step(
@@ -163,6 +192,63 @@ def main() -> int:
 
     final_manifest = subset_manifest_path
     final_manifest_stats = subset_stats_path
+    auto_ms_asl_manifest_path = output_root / f"{args.run_name}_ms_asl_manifest.jsonl"
+    auto_ms_asl_stats_path = output_root / f"{args.run_name}_ms_asl_stats.json"
+    auto_ms_asl_download_report_path = output_root / f"{args.run_name}_ms_asl_download_report.json"
+
+    if args.auto_ms_asl_root:
+        auto_ms_asl_root = Path(args.auto_ms_asl_root).resolve()
+        auto_ms_asl_clips_root = Path(args.auto_ms_asl_clips_root).resolve() if args.auto_ms_asl_clips_root else (output_root / "ms_asl_clips")
+
+        if not args.auto_ms_asl_skip_download:
+            run_step(
+                [
+                    python_exe,
+                    str(python_dir / "download_ms_asl_clips.py"),
+                    "--dataset-root",
+                    str(auto_ms_asl_root),
+                    "--output-root",
+                    str(auto_ms_asl_clips_root),
+                    "--labels-file",
+                    str(labels_file),
+                    "--splits",
+                    str(args.auto_ms_asl_splits),
+                    "--max-clips-per-label",
+                    str(args.auto_ms_asl_max_clips_per_label),
+                    "--report-output",
+                    str(auto_ms_asl_download_report_path),
+                    *(["--force"] if args.force else []),
+                ],
+                cwd=repo_root,
+            )
+        else:
+            print("Skipping MS-ASL clip download by request.")
+
+        if args.force or not auto_ms_asl_manifest_path.exists():
+            run_step(
+                [
+                    python_exe,
+                    str(python_dir / "build_ms_asl_manifest.py"),
+                    "--dataset-root",
+                    str(auto_ms_asl_root),
+                    "--clips-root",
+                    str(auto_ms_asl_clips_root),
+                    "--labels-file",
+                    str(labels_file),
+                    "--splits",
+                    str(args.auto_ms_asl_splits),
+                    "--output",
+                    str(auto_ms_asl_manifest_path),
+                    "--stats-output",
+                    str(auto_ms_asl_stats_path),
+                ],
+                cwd=repo_root,
+            )
+        else:
+            print(f"Skipping auto MS-ASL manifest build, already exists: {auto_ms_asl_manifest_path}")
+
+        args.extra_manifest = str(auto_ms_asl_manifest_path)
+
     if args.extra_manifest:
         extra_manifest = Path(args.extra_manifest).resolve()
         merge_command = [
@@ -295,6 +381,11 @@ def main() -> int:
         "metadata": "" if args.skip_export else str(metadata_path),
         "extra_manifest": str(Path(args.extra_manifest).resolve()) if args.extra_manifest else "",
         "extra_label_map": str(Path(args.extra_label_map).resolve()) if args.extra_label_map else "",
+        "auto_ms_asl_root": str(Path(args.auto_ms_asl_root).resolve()) if args.auto_ms_asl_root else "",
+        "auto_ms_asl_clips_root": str((Path(args.auto_ms_asl_clips_root).resolve() if args.auto_ms_asl_clips_root else (output_root / "ms_asl_clips"))) if args.auto_ms_asl_root else "",
+        "auto_ms_asl_splits": args.auto_ms_asl_splits,
+        "auto_ms_asl_max_clips_per_label": args.auto_ms_asl_max_clips_per_label,
+        "auto_ms_asl_skip_download": args.auto_ms_asl_skip_download,
         "max_frames": args.max_frames,
         "epochs": args.epochs,
         "batch_size": args.batch_size,

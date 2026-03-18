@@ -44,20 +44,32 @@ Default label list:
 
 ## Run with MS-ASL augmentation
 
-If you already have an `MS-ASL` overlap manifest:
+Fully automatic path:
 
 ```powershell
 cd D:\Integration-Game\gesture-trainer-web\python
 python run_word_model_pipeline.py ^
   --dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_citizen\ASL_Citizen ^
   --run-name everyday_daily_v1_merged ^
-  --extra-manifest D:\Integration-Game\gesture-trainer-web\datasets\ms_asl\ms_asl_daily_overlap_manifest.jsonl ^
-  --extra-label-map D:\Integration-Game\gesture-trainer-web\python\label_maps\ms_asl_daily_map.example.csv
+  --auto-ms-asl-root D:\Integration-Game\gesture-trainer-web\datasets\ms_asl\MS-ASL
 ```
 
-Sample label map:
+This path automatically:
 
-- [`python/label_maps/ms_asl_daily_map.example.csv`](/D:/Integration-Game/gesture-trainer-web/python/label_maps/ms_asl_daily_map.example.csv)
+- selects overlapping curated labels
+- downloads and clips local MS-ASL train videos
+- builds an MS-ASL manifest in the target label space
+- merges those rows into `train`
+
+Manual path is still supported if you already have a prepared extra manifest:
+
+```powershell
+cd D:\Integration-Game\gesture-trainer-web\python
+python run_word_model_pipeline.py ^
+  --dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_citizen\ASL_Citizen ^
+  --run-name everyday_daily_v1_merged ^
+  --extra-manifest D:\Integration-Game\gesture-trainer-web\datasets\ms_asl\ms_asl_daily_v1_manifest.jsonl
+```
 
 ## What the script writes
 
@@ -85,6 +97,8 @@ artifacts/
 
 If `MS-ASL` augmentation is enabled, the run folder also contains:
 
+- local MS-ASL clip-preparation report
+- auto-built MS-ASL manifest and stats
 - merged manifest
 - merge stats
 
@@ -108,6 +122,21 @@ If `MS-ASL` augmentation is enabled, the run folder also contains:
 
 - `--extra-label-map`  
   CSV mapping labels from the extra dataset into the base label space.
+
+- `--auto-ms-asl-root`  
+  Extracted MS-ASL annotation root for the automatic augmentation path.
+
+- `--auto-ms-asl-clips-root`  
+  Optional local clip folder for automatic MS-ASL preparation.
+
+- `--auto-ms-asl-splits`  
+  Comma-separated MS-ASL splits to use. Default: `train`.
+
+- `--auto-ms-asl-max-clips-per-label`  
+  Cap per label for automatic MS-ASL clip preparation.
+
+- `--auto-ms-asl-skip-download`  
+  Reuse existing local MS-ASL clips without calling `yt-dlp`.
 
 ### Subset controls
 
@@ -182,13 +211,8 @@ There is also a unified web-export launcher for manual export of trained checkpo
 
 ## Current limitation
 
-The script assumes:
+The script can now auto-prepare `MS-ASL`, but that path still depends on:
 
-- the `ASL Citizen` dataset root is already extracted
-- an `MS-ASL` manifest already exists if you pass `--extra-manifest`
-
-So the current state is:
-
-- `ASL Citizen` path is end-to-end ready
-- `MS-ASL` path is ready from the merge step onward
-- the missing piece for `MS-ASL` is still the exact manifest builder after package inspection
+- working access to the `MS-ASL` annotation package
+- `yt-dlp` being able to fetch the referenced source videos
+- local clip creation succeeding on the current machine

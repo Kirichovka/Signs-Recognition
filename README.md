@@ -218,6 +218,8 @@ New resources:
 
 - guide: [MS-ASL Augmentation](./docs/MS_ASL_AUGMENTATION.md)
 - merge utility: [`python/merge_sign_manifests.py`](/D:/Integration-Game/gesture-trainer-web/python/merge_sign_manifests.py)
+- clip downloader: [`python/download_ms_asl_clips.py`](/D:/Integration-Game/gesture-trainer-web/python/download_ms_asl_clips.py)
+- manifest builder: [`python/build_ms_asl_manifest.py`](/D:/Integration-Game/gesture-trainer-web/python/build_ms_asl_manifest.py)
 
 Recommended approach:
 
@@ -259,15 +261,13 @@ It can:
 
 - build the full `ASL Citizen` manifest
 - prepare the curated everyday subset
-- optionally merge an extra `MS-ASL` manifest
+- optionally auto-download, build, and merge extra `MS-ASL` train clips
 - run duplicate video checks on the final manifest
 - run feature extraction
 - train the GRU model
 - export ONNX
 
-Sample `MS-ASL` label map:
-
-- [`python/label_maps/ms_asl_daily_map.example.csv`](/D:/Integration-Game/gesture-trainer-web/python/label_maps/ms_asl_daily_map.example.csv)
+For the common everyday workflow, the auto-MS-ASL path maps labels directly by normalized overlap and synonym groups, so a manual CSV label map is no longer required.
 
 For duplicate and leakage checks in video datasets:
 
@@ -333,6 +333,18 @@ python run_model_pipelines.py ^
   --alphabet-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_semcom\ASL_SemCom
 ```
 
+Bootstrap datasets, auto-prepare overlapping `MS-ASL`, then run both pipelines:
+
+```powershell
+cd D:\Integration-Game\gesture-trainer-web\python
+python run_model_pipelines.py ^
+  --bootstrap-datasets ^
+  --mode all ^
+  --word-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_citizen\ASL_Citizen ^
+  --alphabet-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_semcom\ASL_SemCom ^
+  --use-auto-ms-asl
+```
+
 Train both pipelines and immediately export both models for the web:
 
 ```powershell
@@ -370,6 +382,33 @@ python run_model_pipelines.py ^
 ```
 
 If token and chat id are not passed and are not set in the environment, the launcher will ask for them interactively.
+
+Full end-to-end run with dataset bootstrap, automatic `MS-ASL` augmentation, web export, publishing, and Telegram notification:
+
+```powershell
+cd D:\Integration-Game\gesture-trainer-web\python
+python run_model_pipelines.py ^
+  --bootstrap-datasets ^
+  --mode all ^
+  --word-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_citizen\ASL_Citizen ^
+  --alphabet-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_semcom\ASL_SemCom ^
+  --use-auto-ms-asl ^
+  --export-web ^
+  --publish-word ^
+  --publish-alphabet ^
+  --notify-telegram
+```
+
+What this command now does:
+
+1. downloads or reuses `ASL Citizen`, `MS-ASL`, and `ASL_SemCom`
+2. reuses already extracted dataset folders when they are present
+3. auto-prepares overlapping `MS-ASL` clips for the word model when `--use-auto-ms-asl` is enabled
+4. runs duplicate checks
+5. trains the requested pipelines in sequence
+6. exports browser-ready ONNX artifacts
+7. optionally publishes them into [`models`](/D:/Integration-Game/gesture-trainer-web/models)
+8. optionally sends a Telegram notification
 
 ## Unified model export for web
 

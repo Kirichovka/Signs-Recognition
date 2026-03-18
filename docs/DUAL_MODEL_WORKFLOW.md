@@ -127,14 +127,14 @@ Recommended output files:
 
 ## Important note about MS-ASL
 
-The official `MS-ASL.zip` package appears small relative to a full video archive.
+The official `MS-ASL.zip` package is an annotation package, not a full extracted clip archive.
 
-Treat it as:
+The repository now handles this by:
 
-- a package that still needs inspection
-- likely metadata, split files, or downloader assets
-
-Do not assume it is a fully self-contained extracted video corpus until you inspect the actual package contents on disk.
+- reading the annotation files
+- downloading needed source videos with `yt-dlp`
+- clipping local samples only for the overlapping everyday labels
+- building a local manifest from those prepared clips
 
 ## Suggested next step
 

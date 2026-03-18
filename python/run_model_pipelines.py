@@ -28,6 +28,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--alphabet-run-name", default="alphabet_v1", help="Run name for the alphabet pipeline.")
     parser.add_argument("--word-extra-manifest", default="", help="Optional extra manifest for the word pipeline.")
     parser.add_argument("--word-extra-label-map", default="", help="Optional label map for the word pipeline.")
+    parser.add_argument("--use-auto-ms-asl", action="store_true", help="Automatically prepare and merge MS-ASL augmentation for the word pipeline.")
+    parser.add_argument("--word-auto-ms-asl-root", default="", help="Optional extracted MS-ASL root for auto word-pipeline augmentation.")
+    parser.add_argument("--word-auto-ms-asl-clips-root", default="", help="Optional local clip root for auto MS-ASL augmentation.")
+    parser.add_argument("--word-auto-ms-asl-splits", default="train", help="Comma-separated MS-ASL splits for auto augmentation.")
+    parser.add_argument("--word-auto-ms-asl-max-clips-per-label", type=int, default=40, help="Maximum MS-ASL clips per mapped label in auto augmentation mode.")
+    parser.add_argument("--word-auto-ms-asl-skip-download", action="store_true", help="Reuse existing local MS-ASL clips instead of downloading them.")
     parser.add_argument("--word-output-root", default="", help="Optional custom output root for the word pipeline.")
     parser.add_argument("--alphabet-output-root", default="", help="Optional custom output root for the alphabet pipeline.")
     parser.add_argument("--bootstrap-datasets", action="store_true", help="Run dataset bootstrap before the requested pipelines.")
@@ -116,6 +122,7 @@ def main() -> int:
     repo_root = Path(__file__).resolve().parents[1]
     python_dir = repo_root / "python"
     python_exe = sys.executable
+    datasets_root = Path(args.datasets_root).resolve() if args.datasets_root else (repo_root / "datasets")
     word_run_root: Path | None = None
     alphabet_run_root: Path | None = None
     started_at = time.time()
@@ -179,6 +186,21 @@ def main() -> int:
                 word_command.extend(["--extra-manifest", str(Path(args.word_extra_manifest).resolve())])
             if args.word_extra_label_map:
                 word_command.extend(["--extra-label-map", str(Path(args.word_extra_label_map).resolve())])
+            auto_ms_asl_root = ""
+            if args.use_auto_ms_asl:
+                auto_ms_asl_root = str((Path(args.word_auto_ms_asl_root).resolve() if args.word_auto_ms_asl_root else (datasets_root / "ms_asl" / "MS-ASL")))
+            elif args.word_auto_ms_asl_root:
+                auto_ms_asl_root = str(Path(args.word_auto_ms_asl_root).resolve())
+            if auto_ms_asl_root:
+                word_command.extend(["--auto-ms-asl-root", auto_ms_asl_root])
+            if args.word_auto_ms_asl_clips_root:
+                word_command.extend(["--auto-ms-asl-clips-root", str(Path(args.word_auto_ms_asl_clips_root).resolve())])
+            if args.word_auto_ms_asl_splits:
+                word_command.extend(["--auto-ms-asl-splits", args.word_auto_ms_asl_splits])
+            if args.word_auto_ms_asl_max_clips_per_label:
+                word_command.extend(["--auto-ms-asl-max-clips-per-label", str(args.word_auto_ms_asl_max_clips_per_label)])
+            if args.word_auto_ms_asl_skip_download:
+                word_command.append("--auto-ms-asl-skip-download")
             if args.word_output_root:
                 word_command.extend(["--output-root", str(Path(args.word_output_root).resolve())])
             if args.force:

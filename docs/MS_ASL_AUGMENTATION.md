@@ -42,7 +42,7 @@ Source:
 
 - [Official download page](https://www.microsoft.com/en-us/download/details.aspx?id=100121)
 
-That strongly suggests the official package is **not a full self-contained video archive**. In practice, treat it as metadata, split files, or downloader assets until you inspect the extracted contents.
+That strongly suggests the official package is **not a full self-contained video archive**. In practice, treat it as an annotation package that still needs local clip preparation.
 
 ## Recommended merge strategy
 
@@ -56,14 +56,18 @@ Use this workflow:
 
 ## Repository support
 
-The repository now includes a merge helper:
+The repository now includes:
 
 - [`python/merge_sign_manifests.py`](/D:/Integration-Game/gesture-trainer-web/python/merge_sign_manifests.py)
+- [`python/download_ms_asl_clips.py`](/D:/Integration-Game/gesture-trainer-web/python/download_ms_asl_clips.py)
+- [`python/build_ms_asl_manifest.py`](/D:/Integration-Game/gesture-trainer-web/python/build_ms_asl_manifest.py)
 
-It can:
+Current support can:
 
 - merge a base manifest with an extra manifest
-- remap labels from the extra dataset
+- automatically prepare overlapping local MS-ASL clips
+- automatically build a local MS-ASL manifest from those clips
+- remap labels from the extra dataset into the curated target label space
 - force all extra rows into `train`
 - keep only an allowed list of labels
 - write merge statistics
@@ -99,54 +103,50 @@ python prepare_wlasl_subset.py \
   --max-val-per-class 30
 ```
 
-## Step 2. Prepare an MS-ASL manifest
+## Step 2. Prepare local MS-ASL clips
 
-This depends on the structure of the extracted `MS-ASL.zip` package.
+The repository can now do this automatically.
 
-At this stage, the safest workflow is:
+Standalone example:
 
-1. download the official package
-2. extract it
-3. inspect the file tree
-4. identify:
-   - annotation files
-   - split files
-   - any provided video references or downloader assets
+```powershell
+cd D:\Integration-Game\gesture-trainer-web\python
+python download_ms_asl_clips.py ^
+  --dataset-root D:\Integration-Game\gesture-trainer-web\datasets\ms_asl\MS-ASL ^
+  --output-root D:\Integration-Game\gesture-trainer-web\datasets\ms_asl\clips_daily_v1 ^
+  --labels-file D:\Integration-Game\gesture-trainer-web\python\label_sets\asl_citizen_daily_v1.txt ^
+  --splits train ^
+  --max-clips-per-label 40
+```
 
-Until the exact package contents are confirmed on disk, do not assume the same structure as ASL Citizen.
+This script:
 
-## Step 3. Create a label map
+1. reads the MS-ASL annotation package
+2. keeps only labels that overlap the curated everyday set
+3. uses synonym groups to map variants like `dad` -> `FATHER` when possible
+4. downloads source videos with `yt-dlp`
+5. clips the requested local samples into `.mp4` files
 
-The extra dataset must be mapped into the same label space as the base subset.
+## Step 3. Build an MS-ASL manifest
 
-Examples of the kind of mapping you may need:
-
-- `THANK YOU` -> `THANKYOU`
-- `EAT` -> `EAT1`
-- `DRINK` -> `DRINK1`
-- `WELCOME` -> `WELCOME1`
-- `WANT` -> `WANT1`
-
-The merge helper expects a CSV with:
-
-```text
-source_label,target_label
-THANK YOU,THANKYOU
-EAT,EAT1
-DRINK,DRINK1
-WELCOME,WELCOME1
-WANT,WANT1
+```powershell
+cd D:\Integration-Game\gesture-trainer-web\python
+python build_ms_asl_manifest.py ^
+  --dataset-root D:\Integration-Game\gesture-trainer-web\datasets\ms_asl\MS-ASL ^
+  --clips-root D:\Integration-Game\gesture-trainer-web\datasets\ms_asl\clips_daily_v1 ^
+  --labels-file D:\Integration-Game\gesture-trainer-web\python\label_sets\asl_citizen_daily_v1.txt ^
+  --splits train ^
+  --output D:\Integration-Game\gesture-trainer-web\datasets\ms_asl\ms_asl_daily_v1_manifest.jsonl
 ```
 
 ## Step 4. Merge the manifests
 
-Example command:
+If you want the manual merge path, you can still do this explicitly:
 
 ```bash
 python merge_sign_manifests.py \
   --base-manifest ~/workspace/datasets/asl_citizen/asl_citizen_daily_v1_manifest.jsonl \
-  --extra-manifest ~/workspace/datasets/ms_asl/ms_asl_daily_overlap_manifest.jsonl \
-  --label-map ~/workspace/Signs-Recognition/python/label_maps/ms_asl_daily_map.csv \
+  --extra-manifest ~/workspace/datasets/ms_asl/ms_asl_daily_v1_manifest.jsonl \
   --allowed-labels-file ~/workspace/Signs-Recognition/python/label_sets/asl_citizen_daily_v1.txt \
   --force-extra-split train \
   --extra-source-name ms_asl \
@@ -155,13 +155,29 @@ python merge_sign_manifests.py \
   --stats-output ~/workspace/datasets/merged/everyday_daily_v1_merged_stats.json
 ```
 
-## Step 5. Train on the merged manifest
+## Step 5. Use the fully automatic path
 
-After merging:
+The easiest path is now:
 
-1. run feature extraction on the merged manifest
-2. train the GRU model exactly the same way as before
-3. compare the result against the ASL Citizen-only baseline
+```powershell
+cd D:\Integration-Game\gesture-trainer-web\python
+python run_word_model_pipeline.py ^
+  --dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_citizen\ASL_Citizen ^
+  --run-name everyday_daily_v1 ^
+  --auto-ms-asl-root D:\Integration-Game\gesture-trainer-web\datasets\ms_asl\MS-ASL
+```
+
+This one command now:
+
+1. builds the ASL Citizen manifest
+2. prepares the curated everyday subset
+3. downloads and clips overlapping MS-ASL train samples
+4. builds the local MS-ASL manifest
+5. merges it into train
+6. runs duplicate checks
+7. extracts features
+8. trains the GRU
+9. exports ONNX
 
 ## Duplicate video check
 
@@ -207,13 +223,8 @@ The merge is worth keeping if it gives at least one of these:
 - fewer confusion pairs on practical words
 - more stable live predictions in the browser
 
-## Recommended next step
+## Notes
 
-Once `MS-ASL.zip` is downloaded and extracted, inspect the package and then:
-
-1. identify its annotation structure
-2. build a manifest
-3. map overlapping everyday words
-4. run the merge helper
-
-At that point the repo is already ready for the merge step itself.
+- `yt-dlp` is now part of the Python requirements for the automatic clip-preparation path
+- the automatic path defaults to `train` clips only, which is the safest setup for augmentation
+- if you already have local clips, you can reuse them with `--auto-ms-asl-skip-download`
