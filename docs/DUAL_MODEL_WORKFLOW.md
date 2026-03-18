@@ -148,3 +148,7 @@ The next practical implementation step, if needed, is:
 
 - add a dedicated alphabet training script for `ASL_SemCom`
 - add a dedicated `MS-ASL` manifest builder after the package structure is confirmed
+
+There is now also a dedicated orchestration path for the word model:
+
+- [Word Model Pipeline](./WORD_MODEL_PIPELINE.md)

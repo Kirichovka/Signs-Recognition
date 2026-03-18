@@ -243,6 +243,26 @@ This sets up:
   - `artifacts/word_model`
   - `artifacts/alphabet_model`
 
+## One-command word model pipeline
+
+The repository now also includes an orchestration script for the full word-model training path:
+
+- script: [`python/run_word_model_pipeline.py`](/D:/Integration-Game/gesture-trainer-web/python/run_word_model_pipeline.py)
+- guide: [Word Model Pipeline](./docs/WORD_MODEL_PIPELINE.md)
+
+It can:
+
+- build the full `ASL Citizen` manifest
+- prepare the curated everyday subset
+- optionally merge an extra `MS-ASL` manifest
+- run feature extraction
+- train the GRU model
+- export ONNX
+
+Sample `MS-ASL` label map:
+
+- [`python/label_maps/ms_asl_daily_map.example.csv`](/D:/Integration-Game/gesture-trainer-web/python/label_maps/ms_asl_daily_map.example.csv)
+
 ## Optional local Python backend
 
 Even though the web app now works without a backend, the local FastAPI server is still useful for:
