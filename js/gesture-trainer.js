@@ -467,11 +467,69 @@ function analyzeCurrentFrame(results) {
     };
 }
 
+function percentToViewBox(value) {
+    return Number.parseFloat(String(value).replace("%", "")) || 50;
+}
+
+function renderGesturePreview(gesture) {
+    const guide = getGestureGuide(gesture);
+    const spec = getGestureTrackingSpec(gesture);
+    const handX = percentToViewBox(guide.visual.x);
+    const handY = percentToViewBox(guide.visual.y);
+    const secondHandX = spec.twoHands ? Math.max(24, Math.min(76, handX + (handX >= 50 ? -16 : 16))) : handX;
+    const secondHandY = spec.twoHands ? Math.min(78, handY + 4) : handY;
+    const zoneColorMap = {
+        head: "#f97316",
+        mouth: "#ef4444",
+        chest: "#2563eb",
+        waist: "#14b8a6",
+        neutral: "#8b5cf6"
+    };
+    const zoneColor = zoneColorMap[spec.zone] || "#2563eb";
+
+    gestureEmoji.innerHTML = `
+        <svg viewBox="0 0 100 100" class="gesture-preview-svg" aria-hidden="true">
+            <defs>
+                <linearGradient id="gesturePreviewBg" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#f97316" />
+                    <stop offset="100%" stop-color="#fb923c" />
+                </linearGradient>
+            </defs>
+            <rect x="2" y="2" width="96" height="96" rx="24" fill="url(#gesturePreviewBg)" />
+            <ellipse cx="50" cy="20" rx="12" ry="11" fill="rgba(255,255,255,0.28)" />
+            <rect x="28" y="31" width="44" height="38" rx="16" fill="rgba(255,255,255,0.22)" />
+            <ellipse cx="${handX}" cy="${handY}" rx="14" ry="9" fill="rgba(255,255,255,0.18)" stroke="${zoneColor}" stroke-width="2.5" />
+            ${spec.twoHands ? `<ellipse cx="${secondHandX}" cy="${secondHandY}" rx="13" ry="8" fill="rgba(255,255,255,0.16)" stroke="${zoneColor}" stroke-width="2.5" />` : ""}
+            <g transform="translate(${handX} ${handY}) rotate(${guide.visual.rotation}) scale(${guide.visual.scale} 1)" ${guide.visual.isStill ? 'opacity="0"' : ""}>
+                <line x1="-18" y1="0" x2="10" y2="0" stroke="rgba(255,255,255,0.92)" stroke-width="4" stroke-linecap="round" />
+                <path d="M 10 -7 L 20 0 L 10 7" fill="none" stroke="rgba(255,255,255,0.92)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+            </g>
+            <g transform="translate(${handX} ${handY})">
+                <rect x="-10" y="-9" width="20" height="18" rx="7" fill="rgba(255,255,255,0.98)" />
+                <rect x="-10" y="-20" width="4" height="10" rx="2" fill="rgba(255,255,255,0.98)" />
+                <rect x="-4.5" y="-21" width="4" height="11" rx="2" fill="rgba(255,255,255,0.98)" />
+                <rect x="1" y="-20" width="4" height="10" rx="2" fill="rgba(255,255,255,0.98)" />
+                <rect x="6.5" y="-18" width="4" height="8" rx="2" fill="rgba(255,255,255,0.98)" />
+                <rect x="-14" y="-2" width="7" height="4" rx="2" transform="rotate(-28 -14 -2)" fill="rgba(255,255,255,0.98)" />
+            </g>
+            ${spec.twoHands ? `
+            <g transform="translate(${secondHandX} ${secondHandY}) scale(0.88)">
+                <rect x="-10" y="-9" width="20" height="18" rx="7" fill="rgba(255,255,255,0.94)" />
+                <rect x="-10" y="-20" width="4" height="10" rx="2" fill="rgba(255,255,255,0.94)" />
+                <rect x="-4.5" y="-21" width="4" height="11" rx="2" fill="rgba(255,255,255,0.94)" />
+                <rect x="1" y="-20" width="4" height="10" rx="2" fill="rgba(255,255,255,0.94)" />
+                <rect x="6.5" y="-18" width="4" height="8" rx="2" fill="rgba(255,255,255,0.94)" />
+                <rect x="-14" y="-2" width="7" height="4" rx="2" transform="rotate(-28 -14 -2)" fill="rgba(255,255,255,0.94)" />
+            </g>` : ""}
+        </svg>
+    `;
+}
+
 function renderGestureCard() {
     const gesture = getCurrentGesture();
     gestureTitle.textContent = gesture.title;
     gestureInstruction.textContent = gesture.instruction;
-    gestureEmoji.textContent = gesture.badge;
+    renderGesturePreview(gesture);
     gestureStep.textContent = `${currentGestureIndex + 1} / ${gestures.length}`;
     renderGuideCard();
 }
