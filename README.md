@@ -220,6 +220,29 @@ Recommended approach:
 - use `MS-ASL` as extra **train-only** augmentation
 - keep validation and test behavior anchored in the base dataset
 
+## Combined dataset bootstrap and two-model layout
+
+The repository also now includes a single bootstrap script for preparing the dataset workspace and the output folders for two separate models:
+
+- bootstrap script: [`python/download_sign_datasets.py`](/D:/Integration-Game/gesture-trainer-web/python/download_sign_datasets.py)
+- workflow guide: [Dual Model Workflow](./docs/DUAL_MODEL_WORKFLOW.md)
+
+Quick start:
+
+```powershell
+cd D:\Integration-Game\gesture-trainer-web\python
+python download_sign_datasets.py
+```
+
+This sets up:
+
+- `ASL Citizen` for the word model
+- `MS-ASL` as a second word-level source
+- `ASL_SemCom` for the alphabet model
+- separate artifact folders for:
+  - `artifacts/word_model`
+  - `artifacts/alphabet_model`
+
 ## Optional local Python backend
 
 Even though the web app now works without a backend, the local FastAPI server is still useful for:
