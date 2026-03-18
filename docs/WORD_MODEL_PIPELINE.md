@@ -134,6 +134,27 @@ If `MS-ASL` augmentation is enabled, the run folder also contains:
 - `--force`  
   Rebuild intermediate artifacts even if they already exist.
 
+## Duplicate video scan
+
+Before extraction or before trusting a merged dataset, you can run:
+
+- [`python/check_video_duplicates.py`](/D:/Integration-Game/gesture-trainer-web/python/check_video_duplicates.py)
+
+Example:
+
+```powershell
+cd D:\Integration-Game\gesture-trainer-web\python
+python check_video_duplicates.py ^
+  --manifest D:\Integration-Game\gesture-trainer-web\artifacts\word_model\everyday_daily_v1\everyday_daily_v1_subset_manifest.jsonl ^
+  --fail-on-cross-split
+```
+
+Recommended use:
+
+1. build the subset or merged manifest
+2. run duplicate scanning
+3. only then proceed to extraction and training
+
 ## Why this script is useful
 
 Without orchestration, the word-model pipeline is easy to break across multiple manual commands.

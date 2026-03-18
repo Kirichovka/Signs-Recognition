@@ -163,6 +163,32 @@ After merging:
 2. train the GRU model exactly the same way as before
 3. compare the result against the ASL Citizen-only baseline
 
+## Duplicate video check
+
+The repository now includes a duplicate scanner for videos:
+
+- [`python/check_video_duplicates.py`](/D:/Integration-Game/gesture-trainer-web/python/check_video_duplicates.py)
+
+You can use it in two ways:
+
+1. scan a folder tree directly
+2. scan a JSONL manifest with known `video_path`, `split`, and `label` fields
+
+Example on a merged manifest:
+
+```powershell
+cd D:\Integration-Game\gesture-trainer-web\python
+python check_video_duplicates.py ^
+  --manifest D:\Integration-Game\gesture-trainer-web\artifacts\word_model\everyday_daily_v1_merged\everyday_daily_v1_merged_manifest.jsonl ^
+  --fail-on-cross-split
+```
+
+This is useful for:
+
+- exact duplicate detection
+- split-leakage detection between `train`, `val`, and `test`
+- checking whether the same video appears under different labels
+
 ## Why this approach is safer than fully mixing datasets
 
 It avoids several common problems:

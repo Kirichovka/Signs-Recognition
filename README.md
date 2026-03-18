@@ -268,6 +268,10 @@ Sample `MS-ASL` label map:
 
 - [`python/label_maps/ms_asl_daily_map.example.csv`](/D:/Integration-Game/gesture-trainer-web/python/label_maps/ms_asl_daily_map.example.csv)
 
+For duplicate and leakage checks in video datasets:
+
+- scanner: [`python/check_video_duplicates.py`](/D:/Integration-Game/gesture-trainer-web/python/check_video_duplicates.py)
+
 ## Optional local Python backend
 
 Even though the web app now works without a backend, the local FastAPI server is still useful for:
