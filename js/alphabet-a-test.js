@@ -8,6 +8,7 @@ import {
 const DATASET_URL = "./datasets/landmarks_dataset.json?v=20260319-4";
 const K_NEIGHBORS = 5;
 const Z_WEIGHT = 0.35;
+const DRAW_POINT_INDICES = [0, 4, 8, 12, 20];
 const HAND_CONNECTIONS = [
     [0, 1], [1, 2], [2, 3], [3, 4],
     [0, 5], [5, 6], [6, 7], [7, 8],
