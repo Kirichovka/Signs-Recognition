@@ -5,25 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ASL Model Test</title>
     <link rel="stylesheet" href="./styles.css" />
-    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
     <main class="gesture-page">
         <section class="gesture-shell">
             <div class="gesture-hero">
-                <div class="theme-kicker">ASL Browser Model</div>
+                <div class="theme-kicker">JSON Landmark Matcher</div>
                 <h1>Live Sign Recognition Test</h1>
-                <p>Open the camera, keep one signer in frame, and watch the browser-run ONNX model predict the top sign candidates without any backend. Use <code>?model=alphabet_v1</code> in the URL to test the alphabet model.</p>
+                <p>Open the camera, keep one hand in frame, and watch the browser compare your landmarks against <code>landmarks_dataset.json</code> with kNN matching.</p>
             </div>
 
             <div class="gesture-layout">
                 <section class="gesture-panel gesture-target-panel">
                     <div class="gesture-target-header">
                         <div>
-                            <div class="gesture-label">Model State</div>
-                            <h2 id="model-status-title">Loading browser model...</h2>
+                            <div class="gesture-label">Dataset State</div>
+                            <h2 id="model-status-title">Loading landmark dataset...</h2>
                         </div>
                         <div id="model-health-badge" class="gesture-step">Checking</div>
                     </div>
@@ -32,20 +30,20 @@
                         <div class="gesture-calibration-header">
                             <div>
                                 <div class="gesture-label">Prediction</div>
-                                <h3 id="top-prediction-label">Waiting for frames</h3>
+                                <h3 id="top-prediction-label">Waiting for hand</h3>
                             </div>
-                            <button id="reset-buffer-btn" type="button" class="secondary">Reset Buffer</button>
+                            <button id="reset-buffer-btn" type="button" class="secondary">Reset View</button>
                         </div>
-                        <p id="top-prediction-score" class="gesture-calibration-status">Need 40 frames before the first inference.</p>
+                        <p id="top-prediction-score" class="gesture-calibration-status">Show one hand clearly to start matching.</p>
                     </div>
 
                     <div class="gesture-score-grid">
                         <article class="gesture-score-card">
-                            <div class="gesture-label">Buffered Frames</div>
+                            <div class="gesture-label">Tracked Hands</div>
                             <div id="buffered-frames" class="gesture-score">0</div>
                         </article>
                         <article class="gesture-score-card">
-                            <div class="gesture-label">Last Inference</div>
+                            <div class="gesture-label">Last Match</div>
                             <div id="last-inference-at" class="gesture-status">Not run yet</div>
                         </article>
                     </div>
@@ -57,8 +55,8 @@
 
                     <div class="gesture-help-card">
                         <div class="gesture-label">Tips</div>
-                        <p>Stay centered, keep your upper body visible, and hold the sign for about a second so the 40-frame sequence stays consistent for the ONNX model.</p>
-                        <button id="retry-model-btn" type="button" class="secondary gesture-retry-btn">Reload Model</button>
+                        <p>Stay centered, keep one hand visible, and hold the sign steady so the JSON matcher can compare your landmarks to the saved samples.</p>
+                        <button id="retry-model-btn" type="button" class="secondary gesture-retry-btn">Reload Dataset</button>
                     </div>
                 </section>
 
@@ -66,7 +64,7 @@
                     <div class="gesture-camera-header">
                         <div>
                             <div class="gesture-label">Live Camera</div>
-                            <h2>Holistic View</h2>
+                            <h2>Hand View</h2>
                         </div>
                         <div id="camera-state" class="gesture-camera-state">Starting camera...</div>
                     </div>
@@ -84,7 +82,7 @@
                             </div>
                             <button id="retry-camera-btn" type="button" class="secondary">Retry Camera</button>
                         </div>
-                        <div id="diagnostics-summary" class="gesture-diagnostics-summary">Waiting for the browser model and camera to become ready.</div>
+                        <div id="diagnostics-summary" class="gesture-diagnostics-summary">Waiting for the JSON matcher and camera to become ready.</div>
                         <div id="diagnostics-list" class="gesture-diagnostics-list"></div>
                     </div>
                 </section>
@@ -92,6 +90,6 @@
         </section>
     </main>
 
-    <script type="module" src="./js/model-test.js?v=20260318-8"></script>
+    <script type="module" src="./js/model-test.js?v=20260319-9"></script>
 </body>
 </html>
