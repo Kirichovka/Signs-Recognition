@@ -1,26 +1,366 @@
-# ASL Browser Trainer
+# Gesture Trainer Web
 
-Interactive sign-practice project built with MediaPipe Holistic and `onnxruntime-web`.
+Technical documentation for the current browser-based ASL practice application.
 
-The current web UI no longer depends on a Python backend. The trained sign model now runs directly in the browser, which means the app can be hosted as a static site on GitHub Pages, Netlify, or a local `http.server`.
+## 1. Project Summary
 
-## Current features
+This repository contains a static web application for ASL practice and a set of Python tools for data preparation, optional local APIs, model training, and export.
 
-- browser-based sign trainer with target signs, hold progress, coaching, and camera diagnostics
-- standalone live model test page
-- ONNX model stored in the repository
-- Python training pipeline for manifests, subset preparation, landmark feature extraction, GRU training, and ONNX export
-- curated label set for practical everyday ASL signs
+The **current primary runtime path** is:
 
-Current embedded model:
+- camera access in the browser
+- hand landmark extraction with **MediaPipe Hands**
+- gesture classification in JavaScript with a **weighted k-nearest neighbors (kNN)** matcher
+- sample storage in [`datasets/landmarks_dataset.json`](./datasets/landmarks_dataset.json)
 
-- model file: [`models/asl_citizen_50.onnx`](/D:/Integration-Game/gesture-trainer-web/models/asl_citizen_50.onnx)
-- metadata: [`models/asl_citizen_50_metadata.json`](/D:/Integration-Game/gesture-trainer-web/models/asl_citizen_50_metadata.json)
-- source: baseline trained on an `ASL Citizen` subset with `50` classes
+The main trainer does **not** require a Python backend to run. The site can be served as a static website from:
 
-## Quick start
+- GitHub Pages
+- Netlify
+- a local static server such as `python -m http.server`
 
-### Web version
+## 2. Current Runtime Architecture
+
+### Browser runtime
+
+The current browser stack is:
+
+- `HTML/CSS` for UI
+- `MediaPipe Hands` for live hand landmark extraction
+- `JavaScript` for:
+  - landmark normalization
+  - mirrored matching
+  - weighted `kNN` voting
+  - target/hold logic
+  - dictionary and task flow
+
+Main browser entry points:
+
+- [`index.html`](./index.html)  
+  Main trainer UI and dictionary
+- [`model-test.html`](./model-test.html)  
+  Low-level live matcher diagnostics
+- [`alphabet-a-test.html`](./alphabet-a-test.html)  
+  Task-driven JSON letter practice page
+
+Main browser scripts:
+
+- [`js/gesture-trainer.js`](./js/gesture-trainer.js)  
+  Primary app logic
+- [`js/model-test.js`](./js/model-test.js)  
+  Diagnostic matcher page
+- [`js/alphabet-a-test.js`](./js/alphabet-a-test.js)  
+  Letter task practice over the JSON dataset
+- [`js/sign-model-runtime.js`](./js/sign-model-runtime.js)  
+  Shared camera/runtime utilities and legacy ONNX support
+
+### Python runtime
+
+Python is no longer required for the main static web experience, but it is still used for:
+
+- dataset preparation
+- duplicate checking
+- training and export workflows
+- optional local inference/API endpoints
+- optional ONNX model export and legacy sequence-model tooling
+
+Relevant Python files:
+
+- [`python/local_inference_server.py`](./python/local_inference_server.py)
+- [`python/train_sign_model.py`](./python/train_sign_model.py)
+- [`python/export_sign_model_onnx.py`](./python/export_sign_model_onnx.py)
+- [`python/run_word_model_pipeline.py`](./python/run_word_model_pipeline.py)
+- [`python/run_alphabet_model_pipeline.py`](./python/run_alphabet_model_pipeline.py)
+- [`python/run_model_pipelines.py`](./python/run_model_pipelines.py)
+
+## 3. How Recognition Works
+
+### 3.1 Main idea
+
+The current recognizer is **not** a neural network running in the browser for the main trainer. It is a **landmark-based weighted kNN classifier**.
+
+The browser:
+
+1. captures a webcam frame
+2. runs MediaPipe Hands
+3. selects the primary detected hand
+4. normalizes the `21` hand landmarks
+5. compares them to saved samples in JSON
+6. predicts the nearest label with weighted voting
+
+### 3.2 Landmark preprocessing
+
+For each live hand:
+
+1. Choose the hand with the best `handedness score`.
+2. Sort landmarks by `id`.
+3. Recenter all points relative to landmark `0` (`wrist`).
+4. Compute scale from the maximum `2D` distance from the wrist.
+5. Normalize `x` and `y` by that scale.
+6. Downweight depth with `Z_WEIGHT = 0.35`.
+7. Flatten the result into a vector of `21 * 3 = 63` values.
+8. Build a mirrored version by flipping `x`.
+
+### 3.3 Distance and voting
+
+For each saved sample:
+
+1. Load its primary hand.
+2. Normalize it with the same preprocessing pipeline.
+3. Compute distance from the live vector to:
+   - the original sample vector
+   - the mirrored live vector
+4. Keep the smaller distance.
+
+Then:
+
+1. Sort all samples by distance.
+2. Keep the `K_NEIGHBORS = 5` nearest samples.
+3. Weight each neighbor vote with:
+
+```text
+exp(-4 * distance)
+```
+
+4. Sum votes by label.
+5. Pick the label with the highest total vote.
+
+Derived outputs:
+
+- `predicted_label`: label with the highest weighted vote
+- `confidence`: winner vote share among the selected neighbors
+- `similarity`: `1 / (1 + best_distance)`
+- `top_matches`: top ranked labels and distances
+
+### 3.4 Why this works on a static website
+
+The site works without a backend because:
+
+- MediaPipe runs in the browser
+- the classifier is written in JavaScript
+- training samples are stored as static JSON
+- no server-side inference is required
+
+In practice, the static site only needs to serve:
+
+- page files
+- JavaScript
+- CSS
+- `datasets/landmarks_dataset.json`
+- optional media assets in [`videos`](./videos)
+
+## 4. Dataset Format
+
+The browser matcher reads:
+
+- [`datasets/landmarks_dataset.json`](./datasets/landmarks_dataset.json)
+
+High-level structure:
+
+```json
+{
+  "labels": ["A", "B", "hello"],
+  "samples": [
+    {
+      "id": 1,
+      "label": "A",
+      "captured_at": "2026-03-19T00:00:00Z",
+      "image_width": 960,
+      "image_height": 540,
+      "hands": [
+        {
+          "handedness": "Right",
+          "score": 0.99,
+          "image_landmarks": [
+            { "id": 0, "x": 0.5, "y": 0.6, "z": 0.0 }
+          ],
+          "world_landmarks": []
+        }
+      ]
+    }
+  ]
+}
+```
+
+Important implementation notes:
+
+- only samples that contain a hand with at least `21` `image_landmarks` are usable
+- the matcher always selects the best-scored hand from each sample
+- labels listed in `labels` are not enough by themselves; a label must also have at least one valid sample in `samples`
+
+Current repository state:
+
+- the dataset file declares more labels than it currently has usable samples for
+- the current usable sample labels are primarily:
+  - letters: `A, B, C, D, E, F, G, H, I, J, L`
+  - words: `hello`
+
+This means:
+
+- letter practice is broader than word practice
+- the word matcher is currently limited by dataset coverage, not by code
+
+## 5. Application Pages
+
+### 5.1 Main trainer
+
+File:
+
+- [`index.html`](./index.html)
+
+Behavior:
+
+- landing page
+- dictionary page
+- alphabet page
+- practice page
+- camera overlay with live landmarks
+- target sign tasks
+- hold progress
+- speech playback for the current target
+- fallback descriptions and media for dictionary items
+
+Recognition backend:
+
+- JSON landmark matcher from [`datasets/landmarks_dataset.json`](./datasets/landmarks_dataset.json)
+
+### 5.2 Model test page
+
+File:
+
+- [`model-test.html`](./model-test.html)
+
+Purpose:
+
+- raw live recognition diagnostics
+- top prediction inspection
+- confidence/similarity inspection
+- dataset loading and camera troubleshooting
+
+Recognition backend:
+
+- same JSON kNN matcher as the main trainer
+
+### 5.3 Letter practice page
+
+File:
+
+- [`alphabet-a-test.html`](./alphabet-a-test.html)
+
+Purpose:
+
+- task-oriented letter practice
+- current task such as "Show A"
+- hold progress
+- confidence/similarity display
+- top matches and diagnostics
+
+Recognition backend:
+
+- same JSON kNN matcher
+
+Despite the historical file name, this page is no longer limited to only one hardcoded letter.
+
+## 6. Dictionary and Media Assets
+
+The visual dictionary in the main trainer uses a curated set of local media files from:
+
+- [`videos`](./videos)
+
+These assets are used for:
+
+- dictionary cards
+- popup demonstrations
+- sign descriptions
+
+They are **not** the recognition source. Recognition comes from the JSON landmark dataset, not from the video files.
+
+The app deliberately avoids probing missing local media with network `HEAD` requests and instead uses an explicit allowlist in the frontend to prevent noisy `404` errors.
+
+## 7. How Python and JavaScript Interact
+
+Python libraries are **not imported directly into JavaScript**.
+
+Instead, the project uses two patterns:
+
+### Pattern A: export artifacts for browser use
+
+Python is used to train or prepare a model, then export artifacts such as:
+
+- `.onnx`
+- metadata `.json`
+
+The browser then loads those exported files directly.
+
+Example:
+
+- exporter: [`python/export_sign_model_onnx.py`](./python/export_sign_model_onnx.py)
+- browser runtime: [`js/sign-model-runtime.js`](./js/sign-model-runtime.js)
+
+### Pattern B: port the algorithm from Python to JavaScript
+
+For the current JSON matcher, the algorithm exists in Python as an optional service and was then reimplemented in JavaScript for static hosting.
+
+Python side:
+
+- [`python/local_inference_server.py`](./python/local_inference_server.py)
+
+Browser side:
+
+- [`js/gesture-trainer.js`](./js/gesture-trainer.js)
+- [`js/model-test.js`](./js/model-test.js)
+- [`js/alphabet-a-test.js`](./js/alphabet-a-test.js)
+
+This is why the app can use Python during development, but still run entirely as a static site in production.
+
+## 8. Optional Local API
+
+The repository still includes an optional FastAPI service:
+
+- [`python/local_inference_server.py`](./python/local_inference_server.py)
+
+Available endpoints:
+
+- `GET /`
+- `GET /api/health`
+- `GET /api/landmarks/stats`
+- `GET /api/landmarks/labels`
+- `POST /api/landmarks/reload`
+- `POST /api/recognize/landmarks`
+- `POST /api/predict`
+- `POST /api/recognize/sequence`
+
+Current role of this service:
+
+- local debugging
+- optional server-side landmark matching
+- optional legacy sequence-model inference
+
+It is **not required** for the GitHub Pages deployment.
+
+## 9. Legacy ONNX / Sequence Model Infrastructure
+
+The repository still contains legacy infrastructure for neural-network-based recognition:
+
+- exported models in [`models`](./models)
+- ONNX runtime support in [`js/sign-model-runtime.js`](./js/sign-model-runtime.js)
+- training/export utilities in [`python`](./python)
+
+These files remain useful for:
+
+- experiments
+- comparisons
+- future hybrid systems
+
+But the **current main trainer path** is JSON landmark matching, not ONNX inference.
+
+## 10. Local Development
+
+### Static site
+
+Use a local HTTP server. Camera access is not reliable from `file://`.
+
+Example:
 
 ```powershell
 cd D:\Integration-Game\gesture-trainer-web
@@ -31,468 +371,81 @@ Open:
 
 - `http://127.0.0.1:4174/`
 - `http://127.0.0.1:4174/model-test.html`
+- `http://127.0.0.1:4174/alphabet-a-test.html`
 
-### Which page to use
+### Python environment
 
-- `index.html` - main trainer with target signs, hold logic, coaching, and diagnostics
-- `model-test.html` - lightweight page for camera checks and raw top predictions
-
-## Current architecture
-
-### In the browser
-
-- `index.html` and `model-test.html` load:
-  - `onnxruntime-web`
-  - MediaPipe Holistic
-  - local JS modules from [`js`](/D:/Integration-Game/gesture-trainer-web/js)
-- camera capture and landmark extraction run on the client
-- a `40`-frame landmark sequence is sent into the ONNX model
-- top predictions are computed directly in the browser
-
-### In Python
-
-Python is now used for:
-
-- dataset manifest creation
-- subset selection from explicit label lists
-- video feature extraction
-- model training
-- exporting PyTorch checkpoints to ONNX
-
-The local FastAPI backend is still included as a helper tool, but it is no longer required for the browser UI.
-
-## Project structure
-
-```text
-gesture-trainer-web/
-  index.html
-  model-test.html
-  styles.css
-  js/
-    gesture-trainer.js
-    model-test.js
-    sign-model-runtime.js
-  models/
-    asl_citizen_50.onnx
-    asl_citizen_50_metadata.json
-  python/
-    build_asl_citizen_manifest.py
-    build_wlasl_manifest.py
-    prepare_wlasl_subset.py
-    extract_sign_features.py
-    train_sign_model.py
-    export_sign_model_onnx.py
-    local_inference_server.py
-    label_sets/
-      asl_citizen_daily_v1.txt
-  docs/
-    ARCHITECTURE.md
-    TRAINING_PIPELINE.md
-    TROUBLESHOOTING.md
-```
-
-## Key files
-
-- [`js/sign-model-runtime.js`](/D:/Integration-Game/gesture-trainer-web/js/sign-model-runtime.js)  
-  Shared browser runtime for ONNX loading, softmax, landmark normalization, feature-vector generation, inference, and camera startup.
-
-- [`js/gesture-trainer.js`](/D:/Integration-Game/gesture-trainer-web/js/gesture-trainer.js)  
-  Main trainer UI: target-sign flow, hold progress, visibility coaching, zone checking, guide card, and diagnostics.
-
-- [`js/model-test.js`](/D:/Integration-Game/gesture-trainer-web/js/model-test.js)  
-  Minimal live test page without the full training loop.
-
-- [`python/train_sign_model.py`](/D:/Integration-Game/gesture-trainer-web/python/train_sign_model.py)  
-  GRU-based classifier training on landmark sequences.
-
-- [`python/export_sign_model_onnx.py`](/D:/Integration-Game/gesture-trainer-web/python/export_sign_model_onnx.py)  
-  Export utility for converting a trained checkpoint into ONNX and browser metadata.
-
-- [`python/label_sets/asl_citizen_daily_v1.txt`](/D:/Integration-Game/gesture-trainer-web/python/label_sets/asl_citizen_daily_v1.txt)  
-  Curated list of practical everyday ASL labels for the next training run.
-
-## Current model status
-
-Baseline result that has already been trained:
-
-- dataset: `ASL Citizen`
-- subset size: `50` classes
-- total videos: `1901`
-- extracted feature shape: `(1901, 40, 154)`
-- baseline validation accuracy: about `56.35%`
-
-What that means:
-
-- the pipeline works end to end
-- the model is good enough for a prototype and demo baseline
-- the quality is still below production-grade recognition
-- a curated everyday subset and/or fewer conflicting classes should improve usability
-
-## Curated everyday labels
-
-Prepared label set for the next training run:
-
-- [`python/label_sets/asl_citizen_daily_v1.txt`](/D:/Integration-Game/gesture-trainer-web/python/label_sets/asl_citizen_daily_v1.txt)
-
-It contains `40` practical signs:
-
-- `HELLO`
-- `BYE`
-- `YES`
-- `NO`
-- `PLEASE`
-- `SORRY`
-- `HELP`
-- `THANKYOU`
-- `WELCOME1`
-- `EAT1`
-- `DRINK1`
-- `WATER`
-- `MOTHER`
-- `FATHER`
-- `FAMILY`
-- `HOME`
-- `HOUSE`
-- `SCHOOL`
-- `WORK`
-- `FRIEND`
-- `LOVE`
-- `WANT1`
-- `NEED`
-- `COME`
-- `COMEHERE`
-- `GO`
-- `STOP`
-- `FINISH`
-- `GOOD`
-- `BAD`
-- `HAPPY`
-- `SAD`
-- `NOW`
-- `MORE`
-- `NOT`
-- `KNOW`
-- `DONTKNOW`
-- `NOTUNDERSTAND`
-- `GOAHEAD`
-- `GREAT`
-
-Important note:
-
-- letters are intentionally not mixed into this model yet
-- alphabet classes currently have too few examples in the available data, so letter recognition should be trained separately
-
-## Alphabet dataset path
-
-For a separate alphabet-only model, the repository now includes a dedicated download path for a static image dataset:
-
-- guide: [Alphabet Dataset](./docs/ALPHABET_DATASET.md)
-- downloader: [`python/download_asl_semcom.py`](/D:/Integration-Game/gesture-trainer-web/python/download_asl_semcom.py)
-
-Recommended alphabet dataset:
-
-- **ASL_SemCom** from Zenodo: [dataset page](https://zenodo.org/records/14635573)
-
-Quick start:
-
-```powershell
-cd D:\Integration-Game\gesture-trainer-web\python
-python download_asl_semcom.py
-```
-
-This path is intentionally separate from the word-level pipeline:
-
-- word model = video / temporal landmarks
-- alphabet model = static image classification
-
-For duplicate checks in alphabet image datasets:
-
-- scanner: [`python/check_image_duplicates.py`](/D:/Integration-Game/gesture-trainer-web/python/check_image_duplicates.py)
-- docs: [Alphabet Dataset](./docs/ALPHABET_DATASET.md)
-
-## Extra word videos from a second dataset
-
-The repository also now includes a merge workflow for adding **extra word-level training videos** from a second dataset such as **MS-ASL**.
-
-New resources:
-
-- guide: [MS-ASL Augmentation](./docs/MS_ASL_AUGMENTATION.md)
-- merge utility: [`python/merge_sign_manifests.py`](/D:/Integration-Game/gesture-trainer-web/python/merge_sign_manifests.py)
-- clip downloader: [`python/download_ms_asl_clips.py`](/D:/Integration-Game/gesture-trainer-web/python/download_ms_asl_clips.py)
-- manifest builder: [`python/build_ms_asl_manifest.py`](/D:/Integration-Game/gesture-trainer-web/python/build_ms_asl_manifest.py)
-
-Recommended approach:
-
-- keep `ASL Citizen` as the primary dataset
-- use `MS-ASL` as extra **train-only** augmentation
-- keep validation and test behavior anchored in the base dataset
-
-## Combined dataset bootstrap and two-model layout
-
-The repository also now includes a single bootstrap script for preparing the dataset workspace and the output folders for two separate models:
-
-- bootstrap script: [`python/download_sign_datasets.py`](/D:/Integration-Game/gesture-trainer-web/python/download_sign_datasets.py)
-- workflow guide: [Dual Model Workflow](./docs/DUAL_MODEL_WORKFLOW.md)
-
-Quick start:
-
-```powershell
-cd D:\Integration-Game\gesture-trainer-web\python
-python download_sign_datasets.py
-```
-
-This sets up:
-
-- `ASL Citizen` for the word model
-- `MS-ASL` as a second word-level source
-- `ASL_SemCom` for the alphabet model
-- separate artifact folders for:
-  - `artifacts/word_model`
-  - `artifacts/alphabet_model`
-
-## One-command word model pipeline
-
-The repository now also includes an orchestration script for the full word-model training path:
-
-- script: [`python/run_word_model_pipeline.py`](/D:/Integration-Game/gesture-trainer-web/python/run_word_model_pipeline.py)
-- guide: [Word Model Pipeline](./docs/WORD_MODEL_PIPELINE.md)
-
-It can:
-
-- build the full `ASL Citizen` manifest
-- prepare the curated everyday subset
-- optionally auto-download, build, and merge extra `MS-ASL` train clips
-- run duplicate video checks on the final manifest
-- run feature extraction
-- train the GRU model
-- export ONNX
-
-For the common everyday workflow, the auto-MS-ASL path maps labels directly by normalized overlap and synonym groups, so a manual CSV label map is no longer required.
-
-For duplicate and leakage checks in video datasets:
-
-- scanner: [`python/check_video_duplicates.py`](/D:/Integration-Game/gesture-trainer-web/python/check_video_duplicates.py)
-
-## One-command alphabet model pipeline
-
-The repository now also includes a dedicated alphabet-model orchestration path:
-
-- script: [`python/run_alphabet_model_pipeline.py`](/D:/Integration-Game/gesture-trainer-web/python/run_alphabet_model_pipeline.py)
-- guide: [Alphabet Model Pipeline](./docs/ALPHABET_MODEL_PIPELINE.md)
-
-It can:
-
-- run duplicate image checks
-- train a static alphabet classifier
-- export ONNX
-
-## Run one or both pipelines from a single launcher
-
-Top-level launcher:
-
-- [`python/run_model_pipelines.py`](/D:/Integration-Game/gesture-trainer-web/python/run_model_pipelines.py)
-
-Examples:
-
-Run both:
-
-```powershell
-cd D:\Integration-Game\gesture-trainer-web\python
-python run_model_pipelines.py ^
-  --mode all ^
-  --word-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_citizen\ASL_Citizen ^
-  --alphabet-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_semcom\ASL_SemCom
-```
-
-Run only the word model:
-
-```powershell
-cd D:\Integration-Game\gesture-trainer-web\python
-python run_model_pipelines.py ^
-  --mode word ^
-  --word-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_citizen\ASL_Citizen
-```
-
-Run only the alphabet model:
-
-```powershell
-cd D:\Integration-Game\gesture-trainer-web\python
-python run_model_pipelines.py ^
-  --mode alphabet ^
-  --alphabet-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_semcom\ASL_SemCom
-```
-
-Bootstrap datasets first, then run both pipelines:
-
-```powershell
-cd D:\Integration-Game\gesture-trainer-web\python
-python run_model_pipelines.py ^
-  --bootstrap-datasets ^
-  --mode all ^
-  --word-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_citizen\ASL_Citizen ^
-  --alphabet-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_semcom\ASL_SemCom
-```
-
-Bootstrap datasets, auto-prepare overlapping `MS-ASL`, then run both pipelines:
-
-```powershell
-cd D:\Integration-Game\gesture-trainer-web\python
-python run_model_pipelines.py ^
-  --bootstrap-datasets ^
-  --mode all ^
-  --word-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_citizen\ASL_Citizen ^
-  --alphabet-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_semcom\ASL_SemCom ^
-  --use-auto-ms-asl
-```
-
-Train both pipelines and immediately export both models for the web:
-
-```powershell
-cd D:\Integration-Game\gesture-trainer-web\python
-python run_model_pipelines.py ^
-  --mode all ^
-  --word-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_citizen\ASL_Citizen ^
-  --alphabet-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_semcom\ASL_SemCom ^
-  --export-web
-```
-
-Train and then publish exported artifacts directly into `models/`:
-
-```powershell
-cd D:\Integration-Game\gesture-trainer-web\python
-python run_model_pipelines.py ^
-  --mode all ^
-  --word-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_citizen\ASL_Citizen ^
-  --alphabet-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_semcom\ASL_SemCom ^
-  --export-web ^
-  --publish-word ^
-  --publish-alphabet
-```
-
-Telegram notification on success or failure:
-
-```powershell
-cd D:\Integration-Game\gesture-trainer-web\python
-python run_model_pipelines.py ^
-  --mode all ^
-  --word-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_citizen\ASL_Citizen ^
-  --alphabet-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_semcom\ASL_SemCom ^
-  --export-web ^
-  --notify-telegram
-```
-
-If token and chat id are not passed and are not set in the environment, the launcher will ask for them interactively.
-
-Full end-to-end run with dataset bootstrap, automatic `MS-ASL` augmentation, web export, publishing, and Telegram notification:
-
-```powershell
-cd D:\Integration-Game\gesture-trainer-web\python
-python run_model_pipelines.py ^
-  --bootstrap-datasets ^
-  --mode all ^
-  --word-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_citizen\ASL_Citizen ^
-  --alphabet-dataset-root D:\Integration-Game\gesture-trainer-web\datasets\asl_semcom\ASL_SemCom ^
-  --use-auto-ms-asl ^
-  --export-web ^
-  --publish-word ^
-  --publish-alphabet ^
-  --notify-telegram
-```
-
-What this command now does:
-
-1. downloads or reuses `ASL Citizen`, `MS-ASL`, and `ASL_SemCom`
-2. reuses already extracted dataset folders when they are present
-3. auto-prepares overlapping `MS-ASL` clips for the word model when `--use-auto-ms-asl` is enabled
-4. runs duplicate checks
-5. trains the requested pipelines in sequence
-6. exports browser-ready ONNX artifacts
-7. optionally publishes them into [`models`](/D:/Integration-Game/gesture-trainer-web/models)
-8. optionally sends a Telegram notification
-
-## Unified model export for web
-
-If you want one command for converting trained checkpoints into browser-ready ONNX artifacts:
-
-- script: [`python/export_models_for_web.py`](/D:/Integration-Game/gesture-trainer-web/python/export_models_for_web.py)
-- guide: [Web Export](./docs/WEB_EXPORT.md)
-
-It supports:
-
-- `word`
-- `alphabet`
-- `all`
-
-and can optionally publish the exported files directly into:
-
-- [`models`](/D:/Integration-Game/gesture-trainer-web/models)
-
-## Optional local Python backend
-
-Even though the web app now works without a backend, the local FastAPI server is still useful for:
-
-- smoke-testing an old API flow
-- debugging a raw PyTorch checkpoint before ONNX export
-- checking `/api/health` and `/api/predict` locally
-
-Example:
+If you need training or the optional API:
 
 ```powershell
 cd D:\Integration-Game\gesture-trainer-web\python
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn local_inference_server:app --host 127.0.0.1 --port 8000
 ```
 
-That server is optional for normal website use.
+## 11. Project Structure
 
-## Detailed documentation
+```text
+gesture-trainer-web/
+  index.html
+  model-test.html
+  alphabet-a-test.html
+  styles.css
+  hero.png
+  datasets/
+    landmarks_dataset.json
+  videos/
+  js/
+    gesture-trainer.js
+    model-test.js
+    alphabet-a-test.js
+    sign-model-runtime.js
+  models/
+    *.onnx
+    *_metadata.json
+  python/
+    local_inference_server.py
+    train_sign_model.py
+    export_sign_model_onnx.py
+    run_word_model_pipeline.py
+    run_alphabet_model_pipeline.py
+    run_model_pipelines.py
+  docs/
+    ARCHITECTURE.md
+    TRAINING_PIPELINE.md
+    WORD_MODEL_PIPELINE.md
+    ALPHABET_MODEL_PIPELINE.md
+    WEB_EXPORT.md
+    TROUBLESHOOTING.md
+```
 
-- [Architecture](./docs/ARCHITECTURE.md)
-- [Training Pipeline](./docs/TRAINING_PIPELINE.md)
-- [Troubleshooting](./docs/TROUBLESHOOTING.md)
-- [Web Export](./docs/WEB_EXPORT.md)
-- [Telegram Notifications](./docs/TELEGRAM_NOTIFICATIONS.md)
+## 12. Current Limitations
 
-## Short retraining workflow
+- The browser matcher is only as good as the sample coverage in `landmarks_dataset.json`.
+- Word-level recognition is currently limited because the dataset contains very few usable word samples.
+- The matcher uses a single live hand and does not model temporal motion.
+- Similar handshapes can still be confused, especially with small datasets.
+- Some legacy ONNX files and documentation remain in the repository for experimentation, even though they are not the main runtime path anymore.
 
-1. Download and extract `ASL Citizen`
-2. Build the full manifest
-3. Create a subset with `prepare_wlasl_subset.py`
-4. Extract features with `extract_sign_features.py`
-5. Train a model with `train_sign_model.py`
-6. Export the checkpoint to ONNX with `export_sign_model_onnx.py`
-7. Replace the files in `models/`
-8. Reload the static website
+## 13. Recommended Next Steps
 
-Full commands and explanations are in [Training Pipeline](./docs/TRAINING_PIPELINE.md).
+If you want to improve recognition quality, the most effective next steps are:
 
-## Known limitations
+1. add more labeled samples to [`datasets/landmarks_dataset.json`](./datasets/landmarks_dataset.json)
+2. expand word-level sample coverage beyond `hello`
+3. keep consistent camera framing when collecting samples
+4. optionally add a server-side evaluation workflow through [`python/local_inference_server.py`](./python/local_inference_server.py)
+5. optionally revisit ONNX models later for hybrid or temporal recognition
 
-- the current embedded model is still a baseline
-- many visually similar signs can still be confused
-- recognition quality depends heavily on stable visibility of hands, upper body, and face
-- a words-only model should not be expected to handle alphabet recognition well
-- GitHub Pages and Netlify are suitable for the browser ONNX version, but not for Python inference
+## 14. Related Documentation
 
-## Deployment
+For deeper workflow documentation, see:
 
-Any static host is fine:
-
-- GitHub Pages
-- Netlify
-- Vercel static hosting
-- local `python -m http.server`
-
-Requirements:
-
-- the site must be able to serve the files in `models/`
-- the browser must be allowed to access the camera
-- CDN dependencies for `onnxruntime-web` and MediaPipe Holistic must load correctly
-
-## Useful notes
-
-- if you see `404` on `/api/health`, you are probably opening an old backend-oriented page or a cached build
-- if the camera throws `NotFoundError`, check browser permissions, the selected device, and whether another app is using the camera
-- if Python feature extraction fails with `libGL.so.1`, install the `libgl1` system package on Linux
+- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)
+- [`docs/TRAINING_PIPELINE.md`](./docs/TRAINING_PIPELINE.md)
+- [`docs/WORD_MODEL_PIPELINE.md`](./docs/WORD_MODEL_PIPELINE.md)
+- [`docs/ALPHABET_MODEL_PIPELINE.md`](./docs/ALPHABET_MODEL_PIPELINE.md)
+- [`docs/MS_ASL_AUGMENTATION.md`](./docs/MS_ASL_AUGMENTATION.md)
+- [`docs/WEB_EXPORT.md`](./docs/WEB_EXPORT.md)
+- [`docs/TROUBLESHOOTING.md`](./docs/TROUBLESHOOTING.md)
