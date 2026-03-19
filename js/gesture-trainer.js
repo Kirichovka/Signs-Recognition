@@ -1,27 +1,39 @@
 import {
-    ALPHABET_MODEL_NAME,
-    DEFAULT_MODEL_NAME,
-    MAX_SEQUENCE,
-    drawHolisticResults,
-    featureVectorFromResults,
-    loadBrowserModel,
-    predictWithBrowserModel,
+    describeCameraError,
+    getCameraPermissionState,
     prettifyLabel,
-    startCameraStream
+    startCameraStream,
+    stopMediaStream
 } from "./sign-model-runtime.js";
+
+const DATASET_URL = "./datasets/landmarks_dataset.json?v=20260319-5";
+const K_NEIGHBORS = 5;
+const Z_WEIGHT = 0.35;
+const MATCH_THRESHOLD = 0.55;
+const HOLD_SECONDS = 0.8;
+const PREFERRED_WORD_ORDER = ["hello", "thanks", "yes", "no"];
+const AVAILABLE_MEDIA_ASSETS = new Set();
+const HAND_CONNECTIONS = [
+    [0, 1], [1, 2], [2, 3], [3, 4],
+    [0, 5], [5, 6], [6, 7], [7, 8],
+    [5, 9], [9, 10], [10, 11], [11, 12],
+    [9, 13], [13, 14], [14, 15], [15, 16],
+    [13, 17], [0, 17], [17, 18], [18, 19], [19, 20]
+];
+const DRAW_POINT_INDICES = [0, 4, 8, 12, 20];
 
 const signCategories = [
     {
         name: "Greetings & Basics",
         icon: "\u{1F44B}",
         words: [
-            { word: "HELLO", icon: "\u{1F44B}", modelLabel: "HELLO", video: "videos/hello.mp4", desc: "Raise your dominant hand near your forehead and move it outward." },
+            { word: "HELLO", icon: "\u{1F44B}", modelLabel: "HELLO", video: "videos/hello.mp4", desc: "Raise your dominant hand near your forehead and move it outward.", aliases: ["hello"] },
             { word: "BYE", icon: "\u{1F44B}", modelLabel: "BYE", video: "videos/bye.mp4", desc: "Open your hand and wave side to side." },
             { word: "PLEASE", icon: "\u{1F970}", modelLabel: "PLEASE", video: "videos/please.mp4", desc: "Place your flat hand on your chest and move it in a circular motion." },
-            { word: "THANK YOU", icon: "\u{1F64F}", modelLabel: "THANKYOU", video: "videos/thankyou.mp4", desc: "Touch your fingers to your chin, then move your hand forward." },
+            { word: "THANK YOU", icon: "\u{1F64F}", modelLabel: "THANKYOU", video: "videos/thankyou.mp4", desc: "Touch your fingers to your chin, then move your hand forward.", aliases: ["thanks"] },
             { word: "SORRY", icon: "\u{1F614}", modelLabel: "SORRY", video: "videos/sorry.mp4", desc: "Make a fist and rub it in a circular motion on your chest." },
-            { word: "YES", icon: "\u{1F44D}", modelLabel: "YES", video: "videos/yes.mp4", desc: "Make a fist and nod it up and down." },
-            { word: "NO", icon: "\u{1F44E}", modelLabel: "NO", video: "videos/no.mp4", desc: "Pinch your index and middle fingers to your thumb." },
+            { word: "YES", icon: "\u{1F44D}", modelLabel: "YES", video: "videos/yes.mp4", desc: "Make a fist and nod it up and down.", aliases: ["yes"] },
+            { word: "NO", icon: "\u{1F44E}", modelLabel: "NO", video: "videos/no.mp4", desc: "Pinch your index and middle fingers to your thumb.", aliases: ["no"] },
             { word: "WATER", icon: "\u{1F4A7}", modelLabel: "WATER", video: "videos/water.mp4", desc: "Tap your index finger on your chin in a W shape." }
         ]
     },
@@ -69,75 +81,212 @@ const signCategories = [
     }
 ];
 
-const MODE_MODEL_NAMES = {
-    practice: DEFAULT_MODEL_NAME,
-    alphabet: ALPHABET_MODEL_NAME
-};
-
 const matchDescriptions = {};
 const matchMedia = {};
 const matchDisplayNames = {};
+
+function registerWordLookup(key, word) {
+    if (!key) {
+        return;
+    }
+    const normalized = normalizeLookupKey(key);
+    matchDescriptions[normalized] = word.desc;
+    matchMedia[normalized] = word.video;
+    matchDisplayNames[normalized] = word.word;
+}
+
 for (const category of signCategories) {
     for (const word of category.words) {
-        matchDescriptions[word.word] = word.desc;
-        matchDescriptions[word.modelLabel] = word.desc;
-        matchMedia[word.word] = word.video;
-        matchMedia[word.modelLabel] = word.video;
-        matchDisplayNames[word.word] = word.word;
-        matchDisplayNames[word.modelLabel] = word.word;
+        registerWordLookup(word.word, word);
+        registerWordLookup(word.modelLabel, word);
+        (word.aliases || []).forEach(alias => registerWordLookup(alias, word));
     }
 }
 
-const modelCache = new Map();
-let holistic = null;
-let activeStream = null;
-let frameBuffer = [];
-let isPredicting = false;
-let currentTargetIndex = 0;
-let currentAlphaIndex = 0;
-let currentMode = "practice";
-let holdStartedAt = 0;
-let targetLabels = [];
-let alphaLabels = [];
-let alphabetModelReady = false;
-let isAdvancing = false;
+const video = document.getElementById("webcam");
+const outputCanvas = document.getElementById("output-canvas");
+const canvasCtx = outputCanvas.getContext("2d");
+const targetDisplay = document.getElementById("target-sign-text");
+const targetDescription = document.getElementById("target-sign-description");
+const dictionaryContainer = document.getElementById("dictionary-container");
+const alphabetGrid = document.getElementById("alphabet-grid");
 
-const HOLD_SECONDS = 0.8;
-const MATCH_THRESHOLD = 0.45;
+let datasetState = null;
+let datasetPromise = null;
+let handsModel = null;
+let activeStream = null;
+let animationFrameId = 0;
+let currentMode = "practice";
+let currentWordIndex = 0;
+let currentAlphabetIndex = 0;
+let holdStartedAt = 0;
+let isAdvancing = false;
+let latestPrediction = null;
+let lastCameraError = "";
+let cameraPermissionState = "prompt";
 
 function normalizeLookupKey(value) {
     return String(value || "").replace(/\s+/g, "").replace(/['-]/g, "").toUpperCase();
 }
 
 function getDisplayDescription(label) {
-    return matchDescriptions[label] || matchDescriptions[normalizeLookupKey(label)] || "Show the sign to the camera.";
+    return matchDescriptions[normalizeLookupKey(label)] || "Show the sign to the camera.";
 }
 
 function getMediaPath(label) {
-    return matchMedia[label] || matchMedia[normalizeLookupKey(label)] || "";
+    return matchMedia[normalizeLookupKey(label)] || "";
 }
 
 function getDisplayName(label) {
-    return matchDisplayNames[label] || matchDisplayNames[normalizeLookupKey(label)] || prettifyLabel(label);
+    return matchDisplayNames[normalizeLookupKey(label)] || prettifyLabel(String(label || "").toUpperCase());
 }
 
-async function ensureModel(mode) {
-    if (modelCache.has(mode)) {
-        return modelCache.get(mode);
+function isLetterLabel(label) {
+    return /^[A-Z]$/.test(String(label || "").trim());
+}
+
+function sortSampleLandmarks(landmarks) {
+    const sorted = Array.from(landmarks || []).sort((left, right) => (left.id || 0) - (right.id || 0));
+    return sorted.length >= 21 ? sorted.slice(0, 21) : null;
+}
+
+function normalizeLandmarks(landmarks) {
+    if (!Array.isArray(landmarks) || landmarks.length < 21) {
+        return null;
     }
 
-    const requestedName = MODE_MODEL_NAMES[mode] || DEFAULT_MODEL_NAME;
-    const model = await loadBrowserModel(requestedName);
-    modelCache.set(mode, model);
+    const wrist = landmarks[0];
+    const centered = landmarks.map(point => ({
+        x: point.x - wrist.x,
+        y: point.y - wrist.y,
+        z: point.z - wrist.z
+    }));
 
-    if (mode === "practice") {
-        targetLabels = model.label_names || [];
-    } else if (mode === "alphabet") {
-        alphaLabels = model.label_names || [];
-        alphabetModelReady = true;
+    const scale = Math.max(1e-6, ...centered.map(point => Math.hypot(point.x, point.y)));
+
+    return centered.map(point => ({
+        x: point.x / scale,
+        y: point.y / scale,
+        z: (point.z / scale) * Z_WEIGHT
+    }));
+}
+
+function flattenLandmarks(landmarks) {
+    return landmarks.flatMap(point => [point.x, point.y, point.z]);
+}
+
+function mirrorVector(vector) {
+    const mirrored = vector.slice();
+    for (let index = 0; index < mirrored.length; index += 3) {
+        mirrored[index] *= -1;
+    }
+    return mirrored;
+}
+
+function vectorDistance(leftVector, rightVector) {
+    let total = 0;
+    const pointCount = leftVector.length / 3;
+
+    for (let index = 0; index < leftVector.length; index += 3) {
+        total += Math.hypot(
+            leftVector[index] - rightVector[index],
+            leftVector[index + 1] - rightVector[index + 1],
+            leftVector[index + 2] - rightVector[index + 2]
+        );
     }
 
-    return model;
+    return total / pointCount;
+}
+
+function buildDatasetState(dataset) {
+    const samples = [];
+    const labelCounts = new Map();
+
+    for (const sample of dataset.samples || []) {
+        const candidateHands = (sample.hands || []).filter(hand =>
+            Array.isArray(hand.image_landmarks) && hand.image_landmarks.length >= 21
+        );
+
+        if (!candidateHands.length) {
+            continue;
+        }
+
+        const primaryHand = candidateHands.reduce((best, hand) => {
+            const score = hand.score || 0;
+            return !best || score > (best.score || 0) ? hand : best;
+        }, null);
+
+        const normalized = normalizeLandmarks(sortSampleLandmarks(primaryHand.image_landmarks));
+        if (!normalized) {
+            continue;
+        }
+
+        samples.push({
+            id: sample.id,
+            label: sample.label || "unknown",
+            handedness: primaryHand.handedness || "Unknown",
+            handednessScore: primaryHand.score || 0,
+            vector: flattenLandmarks(normalized)
+        });
+        labelCounts.set(sample.label, (labelCounts.get(sample.label) || 0) + 1);
+    }
+
+    const rawLabels = [...labelCounts.keys()];
+    const alphabetLabels = rawLabels.filter(isLetterLabel).sort((left, right) => left.localeCompare(right));
+    const otherWordLabels = rawLabels
+        .filter(label => !isLetterLabel(label) && !PREFERRED_WORD_ORDER.includes(label))
+        .sort((left, right) => left.localeCompare(right));
+    const wordLabels = [
+        ...PREFERRED_WORD_ORDER.filter(label => labelCounts.has(label)),
+        ...otherWordLabels
+    ];
+
+    return {
+        sampleCount: samples.length,
+        labelCount: labelCounts.size,
+        labelCounts,
+        samples,
+        wordLabels,
+        alphabetLabels
+    };
+}
+
+async function loadDataset() {
+    const response = await fetch(DATASET_URL);
+    if (!response.ok) {
+        throw new Error(`Could not load landmarks_dataset.json (${response.status}).`);
+    }
+
+    const dataset = await response.json();
+    const state = buildDatasetState(dataset);
+    if (!state.sampleCount) {
+        throw new Error("The JSON landmark dataset did not contain any usable samples.");
+    }
+
+    datasetState = state;
+    return state;
+}
+
+function ensureDatasetLoaded() {
+    if (!datasetPromise) {
+        datasetPromise = loadDataset();
+    }
+    return datasetPromise;
+}
+
+function getActiveLabels() {
+    if (!datasetState) {
+        return [];
+    }
+    return currentMode === "alphabet" ? datasetState.alphabetLabels : datasetState.wordLabels;
+}
+
+function currentTargetLabel() {
+    const labels = getActiveLabels();
+    if (!labels.length) {
+        return "";
+    }
+    return currentMode === "alphabet" ? labels[currentAlphabetIndex] : labels[currentWordIndex];
 }
 
 function updateCameraBadge(text, tone = "var(--accent-success)") {
@@ -170,48 +319,39 @@ function resetProgressUI() {
 }
 
 function updateTargetUI() {
-    const display = document.getElementById("target-sign-text");
-    const description = document.getElementById("target-sign-description");
-
     resetProgressUI();
+    const target = currentTargetLabel();
 
-    if (currentMode === "alphabet") {
-        const letter = alphaLabels[currentAlphaIndex] || "A";
-        if (display) {
-            display.innerText = letter;
+    if (!target) {
+        if (targetDisplay) {
+            targetDisplay.innerText = "Waiting";
         }
-        if (description) {
-            description.innerText = `Sign the letter "${letter}" clearly in front of your camera.`;
+        if (targetDescription) {
+            targetDescription.innerText = datasetState
+                ? currentMode === "alphabet"
+                    ? "No letter samples are available in landmarks_dataset.json."
+                    : "No word samples are available in landmarks_dataset.json."
+                : "Loading JSON landmark matcher...";
         }
         return;
     }
 
-    if (!targetLabels.length) {
-        if (display) {
-            display.innerText = "...";
-        }
-        if (description) {
-            description.innerText = "Loading the practice model...";
-        }
-        return;
+    if (targetDisplay) {
+        targetDisplay.innerText = getDisplayName(target);
     }
-
-    const label = targetLabels[currentTargetIndex];
-    if (display) {
-        display.innerText = getDisplayName(label);
-    }
-    if (description) {
-        description.innerText = getDisplayDescription(label);
+    if (targetDescription) {
+        targetDescription.innerText = currentMode === "alphabet"
+            ? `Show the letter "${target}" clearly in front of your camera.`
+            : getDisplayDescription(target);
     }
 }
 
 function renderDictionary() {
-    const container = document.getElementById("dictionary-container");
-    if (!container) {
+    if (!dictionaryContainer) {
         return;
     }
 
-    container.innerHTML = signCategories.map(category => `
+    dictionaryContainer.innerHTML = signCategories.map(category => `
       <section class="word-category-section">
         <div class="category-header">
           <span class="category-icon">${category.icon}</span>
@@ -230,17 +370,21 @@ function renderDictionary() {
 }
 
 function renderAlphabet() {
-    const grid = document.getElementById("alphabet-grid");
-    if (!grid) {
+    if (!alphabetGrid) {
         return;
     }
 
-    if (!alphabetModelReady || !alphaLabels.length) {
-        grid.innerHTML = `<p style="grid-column: 1 / -1; text-align: center; padding: 2rem;">Loading alphabet model...</p>`;
+    if (!datasetState) {
+        alphabetGrid.innerHTML = `<p style="grid-column: 1 / -1; text-align: center; padding: 2rem;">Loading JSON landmark dataset...</p>`;
         return;
     }
 
-    grid.innerHTML = alphaLabels.map(letter => `
+    if (!datasetState.alphabetLabels.length) {
+        alphabetGrid.innerHTML = `<p style="grid-column: 1 / -1; text-align: center; padding: 2rem;">No alphabet labels are available in landmarks_dataset.json yet.</p>`;
+        return;
+    }
+
+    alphabetGrid.innerHTML = datasetState.alphabetLabels.map(letter => `
       <div class="word-card" onclick="startLetterPractice('${letter}')">
         <div class="word-card-icon" style="font-size: 2.5rem; font-weight: 800; color: var(--accent-primary);">${letter}</div>
         <h3>Letter ${letter}</h3>
@@ -252,6 +396,11 @@ async function assetExists(path) {
     if (!path) {
         return false;
     }
+
+    if (/^videos\//i.test(path)) {
+        return AVAILABLE_MEDIA_ASSETS.has(path);
+    }
+
     try {
         const response = await fetch(path, { method: "HEAD" });
         return response.ok;
@@ -313,6 +462,7 @@ window.speakTarget = () => {
     if (!text) {
         return;
     }
+    speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 0.9;
     speechSynthesis.speak(utterance);
@@ -320,8 +470,10 @@ window.speakTarget = () => {
 
 window.skipSign = () => skipSign();
 window.retryCamera = () => {
-    stopCameraReal();
-    startCameraReal(currentMode);
+    stopCameraLoop();
+    startCameraReal(currentMode).catch(error => {
+        console.error("Retry camera failed", error);
+    });
 };
 
 window.showPage = (pageId, clickedBtn) => {
@@ -336,28 +488,31 @@ window.showPage = (pageId, clickedBtn) => {
         clickedBtn.classList.add("active");
     }
 
-    stopCameraReal();
+    stopCameraLoop();
     if (pageId === "letter-page") {
-        startCameraReal(currentMode);
+        startCameraReal(currentMode).catch(error => {
+            console.error("Practice start failed", error);
+        });
     }
 };
 
-window.openPracticeMode = (mode = "practice", clickedBtn = document.querySelectorAll(".nav-btn")[3]) => {
+window.openPracticeMode = async (mode = "practice", clickedBtn = document.querySelectorAll(".nav-btn")[3]) => {
     currentMode = mode;
-    window.showPage("letter-page", clickedBtn);
+    await ensureDatasetLoaded();
     updateTargetUI();
+    window.showPage("letter-page", clickedBtn);
 };
 
 window.startLetterPractice = async (char) => {
-    await ensureModel("alphabet");
-    const nextIndex = alphaLabels.indexOf(char);
+    await ensureDatasetLoaded();
+    const nextIndex = datasetState?.alphabetLabels?.indexOf(char) ?? -1;
     if (nextIndex === -1) {
         return;
     }
     currentMode = "alphabet";
-    currentAlphaIndex = nextIndex;
-    window.showPage("letter-page", document.querySelectorAll(".nav-btn")[3]);
+    currentAlphabetIndex = nextIndex;
     updateTargetUI();
+    window.showPage("letter-page", document.querySelectorAll(".nav-btn")[3]);
 };
 
 const themeBtn = document.getElementById("theme-toggle");
@@ -379,74 +534,269 @@ if (themeBtn) {
 }
 
 function skipSign() {
-    if (currentMode === "alphabet") {
-        if (!alphaLabels.length) {
-            return;
-        }
-        currentAlphaIndex = (currentAlphaIndex + 1) % alphaLabels.length;
-    } else if (targetLabels.length) {
-        currentTargetIndex = (currentTargetIndex + 1) % targetLabels.length;
-    }
-    updateTargetUI();
-}
-
-async function initHolistic(video, canvas) {
-    if (holistic || typeof window.Holistic === "undefined") {
+    const labels = getActiveLabels();
+    if (!labels.length) {
         return;
     }
 
-    const ctx = canvas.getContext("2d");
-    holistic = new window.Holistic({
-        locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
+    if (currentMode === "alphabet") {
+        currentAlphabetIndex = (currentAlphabetIndex + 1) % labels.length;
+    } else {
+        currentWordIndex = (currentWordIndex + 1) % labels.length;
+    }
+
+    holdStartedAt = 0;
+    latestPrediction = null;
+    updateTargetUI();
+}
+
+function getPrimaryLiveHand(results) {
+    const liveHands = (results.multiHandLandmarks || []).map((landmarks, index) => {
+        const classification = results.multiHandedness?.[index]?.classification?.[0];
+        return {
+            landmarks,
+            handedness: classification?.label || "Unknown",
+            handednessScore: classification?.score || 0
+        };
     });
-    holistic.setOptions({
+
+    if (!liveHands.length) {
+        return { primary: null };
+    }
+
+    const primary = liveHands.reduce((best, hand) =>
+        !best || hand.handednessScore > best.handednessScore ? hand : best
+    , null);
+
+    return { primary };
+}
+
+function classifyCurrentHand(results) {
+    const { primary } = getPrimaryLiveHand(results);
+    if (!primary) {
+        return { primaryHand: null, prediction: null };
+    }
+
+    const normalized = normalizeLandmarks(primary.landmarks);
+    if (!normalized) {
+        return { primaryHand: primary.landmarks, prediction: null };
+    }
+
+    const queryVector = flattenLandmarks(normalized);
+    const queryMirrored = mirrorVector(queryVector);
+
+    const distances = datasetState.samples.map(sample => {
+        const distance = Math.min(
+            vectorDistance(queryVector, sample.vector),
+            vectorDistance(queryMirrored, sample.vector)
+        );
+        return {
+            label: sample.label,
+            distance
+        };
+    }).sort((left, right) => left.distance - right.distance);
+
+    if (!distances.length) {
+        return { primaryHand: primary.landmarks, prediction: null };
+    }
+
+    const neighbors = distances.slice(0, Math.min(K_NEIGHBORS, distances.length));
+    const labelScores = new Map();
+    const labelBestDistances = new Map();
+
+    neighbors.forEach(neighbor => {
+        const vote = Math.exp(-4 * neighbor.distance);
+        labelScores.set(neighbor.label, (labelScores.get(neighbor.label) || 0) + vote);
+
+        const previousBest = labelBestDistances.get(neighbor.label);
+        if (previousBest === undefined || neighbor.distance < previousBest) {
+            labelBestDistances.set(neighbor.label, neighbor.distance);
+        }
+    });
+
+    const rankedLabels = [...labelScores.entries()].sort((left, right) => right[1] - left[1]);
+    const [predictedLabel, predictedWeight] = rankedLabels[0];
+    const totalWeight = [...labelScores.values()].reduce((sum, value) => sum + value, 0);
+    const bestDistance = labelBestDistances.get(predictedLabel);
+
+    return {
+        primaryHand: primary.landmarks,
+        prediction: {
+            predictedLabel,
+            confidence: totalWeight ? predictedWeight / totalWeight : 0,
+            similarity: 1 / (1 + bestDistance),
+            bestDistance
+        }
+    };
+}
+
+function drawHand(rawHand) {
+    outputCanvas.width = video.videoWidth || 1280;
+    outputCanvas.height = video.videoHeight || 720;
+
+    canvasCtx.save();
+    canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+    canvasCtx.translate(outputCanvas.width, 0);
+    canvasCtx.scale(-1, 1);
+    canvasCtx.drawImage(video, 0, 0, outputCanvas.width, outputCanvas.height);
+
+    if (rawHand) {
+        HAND_CONNECTIONS.forEach(([startIndex, endIndex]) => {
+            const start = rawHand[startIndex];
+            const end = rawHand[endIndex];
+            if (!start || !end) {
+                return;
+            }
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(start.x * outputCanvas.width, start.y * outputCanvas.height);
+            canvasCtx.lineTo(end.x * outputCanvas.width, end.y * outputCanvas.height);
+            canvasCtx.strokeStyle = "rgba(0, 200, 255, 0.78)";
+            canvasCtx.lineWidth = 2;
+            canvasCtx.stroke();
+        });
+
+        rawHand.forEach((landmark, index) => {
+            canvasCtx.beginPath();
+            canvasCtx.fillStyle = index === 0
+                ? "rgba(251, 191, 36, 0.98)"
+                : DRAW_POINT_INDICES.includes(index)
+                    ? "rgba(56, 189, 248, 0.98)"
+                    : "rgba(30, 255, 30, 0.82)";
+            canvasCtx.arc(
+                landmark.x * outputCanvas.width,
+                landmark.y * outputCanvas.height,
+                index === 0 ? 6 : 4,
+                0,
+                Math.PI * 2
+            );
+            canvasCtx.fill();
+        });
+    }
+
+    canvasCtx.restore();
+}
+
+function renderRecognition(recognition) {
+    const target = currentTargetLabel();
+
+    if (!recognition || !target) {
+        if (progressStatus) {
+            progressStatus.innerText = target
+                ? "Show your hand to start."
+                : datasetState
+                    ? currentMode === "alphabet"
+                        ? "No JSON letter tasks yet."
+                        : "No JSON word tasks yet."
+                    : "Loading JSON landmark matcher...";
+        }
+        if (progressBar) {
+            progressBar.style.height = "0%";
+        }
+        if (progressText) {
+            progressText.innerText = "0";
+        }
+        if (successStars) {
+            successStars.classList.remove("show");
+        }
+        return;
+    }
+
+    const matchesTarget = normalizeLookupKey(recognition.predictedLabel) === normalizeLookupKey(target);
+    const targetName = getDisplayName(target);
+    const guessName = getDisplayName(recognition.predictedLabel);
+
+    let visibleScore = matchesTarget ? Math.round(recognition.confidence * 100) : 0;
+
+    if (matchesTarget && recognition.confidence >= MATCH_THRESHOLD) {
+        if (!holdStartedAt) {
+            holdStartedAt = performance.now();
+        }
+
+        const elapsed = (performance.now() - holdStartedAt) / 1000;
+        visibleScore = Math.max(visibleScore, Math.min(100, Math.round((elapsed / HOLD_SECONDS) * 100)));
+
+        if (progressStatus) {
+            progressStatus.innerText = elapsed >= HOLD_SECONDS
+                ? `Correct: ${targetName}`
+                : `Good ${targetName}. Keep holding.`;
+        }
+
+        if (elapsed >= HOLD_SECONDS && !isAdvancing) {
+            isAdvancing = true;
+            if (successStars) {
+                successStars.classList.add("show");
+            }
+            setTimeout(() => {
+                skipSign();
+                isAdvancing = false;
+            }, 1000);
+        }
+    } else {
+        holdStartedAt = 0;
+        if (progressStatus) {
+            progressStatus.innerText = matchesTarget
+                ? `Looks like ${targetName}. Hold a little steadier.`
+                : `I see ${guessName}. Show ${targetName}.`;
+        }
+        if (successStars) {
+            successStars.classList.remove("show");
+        }
+    }
+
+    if (progressBar) {
+        progressBar.style.height = `${visibleScore}%`;
+    }
+    if (progressText) {
+        progressText.innerText = String(visibleScore);
+    }
+}
+
+async function initHands() {
+    if (handsModel || typeof window.Hands === "undefined") {
+        return;
+    }
+
+    handsModel = new window.Hands({
+        locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+    handsModel.setOptions({
+        maxNumHands: 2,
         modelComplexity: 1,
-        smoothLandmarks: true,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
+        minDetectionConfidence: 0.7,
+        minTrackingConfidence: 0.7
     });
-    holistic.onResults(async results => {
+    handsModel.onResults(results => {
         if (!activeStream) {
             return;
         }
-
-        drawHolisticResults(ctx, canvas, video, results);
-
-        if (currentMode === "practice") {
-            frameBuffer.push(featureVectorFromResults(results));
-            if (frameBuffer.length > MAX_SEQUENCE) {
-                frameBuffer.shift();
-            }
-            if (frameBuffer.length === MAX_SEQUENCE && !isPredicting && !isAdvancing) {
-                await runPrediction(video);
-            }
-            return;
-        }
-
-        if (!isPredicting && !isAdvancing) {
-            await runPrediction(video);
-        }
+        const { primaryHand, prediction } = datasetState
+            ? classifyCurrentHand(results)
+            : { primaryHand: null, prediction: null };
+        latestPrediction = prediction;
+        drawHand(primaryHand);
+        renderRecognition(prediction);
     });
 }
 
 async function startCameraReal(mode) {
     currentMode = mode || currentMode || "practice";
-    const video = document.getElementById("webcam");
-    const canvas = document.getElementById("output-canvas");
-    if (!video || !canvas) {
-        return;
-    }
-
     resetProgressUI();
-    frameBuffer = [];
     holdStartedAt = 0;
     isAdvancing = false;
+    latestPrediction = null;
+    lastCameraError = "";
     updateTargetUI();
     updateCameraBadge("Loading", "var(--accent-secondary)");
 
     try {
-        await ensureModel(currentMode);
-        await initHolistic(video, canvas);
+        await ensureDatasetLoaded();
+        await initHands();
+
+        if (!handsModel) {
+            throw new Error("MediaPipe Hands did not load on this page.");
+        }
+
+        cameraPermissionState = await getCameraPermissionState();
 
         if (!activeStream) {
             activeStream = await startCameraStream();
@@ -460,123 +810,51 @@ async function startCameraReal(mode) {
             if (!activeStream) {
                 return;
             }
-            if (video.readyState >= 2 && holistic) {
-                await holistic.send({ image: video });
+            if (video.readyState >= 2 && handsModel) {
+                await handsModel.send({ image: video });
             }
             if (activeStream) {
-                requestAnimationFrame(processFrame);
+                animationFrameId = requestAnimationFrame(processFrame);
             }
         };
-        requestAnimationFrame(processFrame);
+        animationFrameId = requestAnimationFrame(processFrame);
     } catch (error) {
-        console.error("Camera or model failed", error);
+        lastCameraError = describeCameraError(error);
+        console.error("Camera or JSON matcher failed", error);
         updateCameraBadge("Error", "var(--accent-danger)");
-        const status = document.getElementById("accuracy-status");
-        if (status) {
-            status.innerText = "Camera or model failed";
+        if (progressStatus) {
+            progressStatus.innerText = lastCameraError;
         }
     }
 }
 
-async function runPrediction(video) {
-    const model = modelCache.get(currentMode) || await ensureModel(currentMode);
-    if (!model) {
-        return;
+function stopCameraLoop() {
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = 0;
     }
 
-    isPredicting = true;
-    try {
-        const input = model.model_type === "image" ? video : frameBuffer;
-        if (model.model_type !== "image" && frameBuffer.length < MAX_SEQUENCE) {
-            return;
-        }
-
-        const result = await predictWithBrowserModel(model, input);
-        const best = result.predictions[0];
-        const progressBar = document.getElementById("accuracy-bar");
-        const accuracyText = document.getElementById("accuracy-text");
-        const successStars = document.getElementById("success-stars");
-        const accuracyStatus = document.getElementById("accuracy-status");
-
-        const targetLabel = currentMode === "alphabet"
-            ? alphaLabels[currentAlphaIndex]
-            : targetLabels[currentTargetIndex];
-        const targetPrediction = result.predictions.find(prediction =>
-            prediction.label.toLowerCase() === String(targetLabel).toLowerCase()
-        );
-        const score = targetPrediction ? targetPrediction.score : 0;
-        let displayScore = Math.floor(score * 100);
-
-        if (best && targetLabel && best.label.toLowerCase() === String(targetLabel).toLowerCase() && best.score > MATCH_THRESHOLD) {
-            if (!holdStartedAt) {
-                holdStartedAt = performance.now();
-            }
-            const holdTime = (performance.now() - holdStartedAt) / 1000;
-            displayScore = Math.min(100, Math.floor((holdTime / HOLD_SECONDS) * 100));
-
-            if (accuracyStatus) {
-                accuracyStatus.innerText = "HOLD STEADY!";
-            }
-
-            if (holdTime >= HOLD_SECONDS) {
-                if (successStars) {
-                    successStars.classList.add("show");
-                }
-                isAdvancing = true;
-                setTimeout(() => {
-                    skipSign();
-                    holdStartedAt = 0;
-                    isAdvancing = false;
-                }, 1200);
-                return;
-            }
-        } else {
-            holdStartedAt = 0;
-            if (accuracyStatus) {
-                accuracyStatus.innerText = score > 0.1 ? "Match Found!" : "Searching...";
-            }
-        }
-
-        if (progressBar) {
-            progressBar.style.height = `${displayScore}%`;
-        }
-        if (accuracyText) {
-            accuracyText.innerText = String(displayScore);
-        }
-    } catch (error) {
-        console.error("Prediction failed", error);
-    } finally {
-        isPredicting = false;
-    }
-}
-
-function stopCameraReal() {
-    if (activeStream) {
-        activeStream.getTracks().forEach(track => track.stop());
-        activeStream = null;
-    }
-    const video = document.getElementById("webcam");
-    if (video) {
-        video.srcObject = null;
-    }
+    stopMediaStream(activeStream);
+    activeStream = null;
+    video.srcObject = null;
     updateCameraBadge("Idle", "var(--text-heading)");
 }
+
+window.addEventListener("beforeunload", () => stopCameraLoop());
 
 window.addEventListener("DOMContentLoaded", async () => {
     renderDictionary();
     renderAlphabet();
+    updateTargetUI();
 
     try {
-        await ensureModel("practice");
+        await ensureDatasetLoaded();
+        renderAlphabet();
         updateTargetUI();
     } catch (error) {
-        console.error("Practice model load failed", error);
-    }
-
-    try {
-        await ensureModel("alphabet");
-        renderAlphabet();
-    } catch (error) {
-        console.error("Alphabet model load failed", error);
+        console.error("Dataset load failed", error);
+        if (progressStatus) {
+            progressStatus.innerText = error.message;
+        }
     }
 });
