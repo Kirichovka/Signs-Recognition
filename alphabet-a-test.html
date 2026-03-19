@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ASL Letter A Sync Test</title>
+    <title>ASL Landmark Dataset Letter Test</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
@@ -12,12 +12,13 @@
     <main class="gesture-page">
         <section class="gesture-shell">
             <div class="gesture-hero">
-                <div class="theme-kicker">ASL Letter A Calibration</div>
-                <h1>Letter A Sync Test</h1>
-                <p>Calibrate five coordinates once for your own A pose. After synchronization, the page only compares the live wrist, thumb, index, middle, and pinky points to your saved template.</p>
+                <div class="theme-kicker">ASL Landmark Dataset</div>
+                <h1>Dataset Letter Test</h1>
+                <p>Load landmark templates from the dataset, compare live hand coordinates to stored samples, and optionally run a personal five-point synchronization to adapt the current letter to your own hand.</p>
                 <div class="gesture-link-row">
                     <a class="gesture-link-btn" href="./index.html">Back To Main Trainer</a>
                 </div>
+                <div id="dataset-label-switch" class="gesture-mode-switch" role="group" aria-label="Dataset letters"></div>
             </div>
 
             <div class="gesture-layout">
@@ -27,7 +28,7 @@
                             <div class="gesture-label">Target Letter</div>
                             <h2 id="letter-title">Letter A</h2>
                         </div>
-                        <div id="sync-step-badge" class="gesture-step">Not started</div>
+                        <div id="dataset-count-badge" class="gesture-step">0 samples</div>
                     </div>
 
                     <div class="gesture-hand-card">
@@ -53,23 +54,22 @@
                         <div class="gesture-guide-header">
                             <div>
                                 <div class="gesture-label">How It Is Measured</div>
-                                <h3>Five Stored Coordinates</h3>
+                                <h3>Dataset Match + Personal Sync</h3>
                             </div>
-                            <div class="gesture-check-badge is-neutral">No shadow overlay</div>
+                            <div class="gesture-check-badge is-neutral">Landmark templates</div>
                         </div>
-                        <p class="gesture-guide-description">This page does not use the old primitive or thumb heuristics. It saves your own wrist and fingertip coordinates for A, then directly checks the live frame against them.</p>
+                        <p class="gesture-guide-description">The page first compares the live hand to templates loaded from landmarks_dataset.json. If that is not enough, you can capture five personal points for the current letter and blend them into the final score.</p>
                         <div class="gesture-guide-chips">
-                            <span class="gesture-guide-chip">Wrist anchor</span>
-                            <span class="gesture-guide-chip">Thumb point</span>
-                            <span class="gesture-guide-chip">Index point</span>
-                            <span class="gesture-guide-chip">Middle point</span>
-                            <span class="gesture-guide-chip">Pinky point</span>
+                            <span class="gesture-guide-chip">Dataset templates</span>
+                            <span class="gesture-guide-chip">21 hand landmarks</span>
+                            <span class="gesture-guide-chip">5-point sync</span>
+                            <span class="gesture-guide-chip">Per-letter calibration</span>
                         </div>
                         <div class="gesture-guide-steps">
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">1</div><div class="gesture-guide-step-copy">Press Start Synchronization.</div></div>
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">2</div><div class="gesture-guide-step-copy">The page will ask for wrist, thumb, index, middle, and pinky in order.</div></div>
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">3</div><div class="gesture-guide-step-copy">Press Capture Current Point for each step while holding A.</div></div>
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">4</div><div class="gesture-guide-step-copy">After synchronization, only your saved coordinates are used for scoring.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">1</div><div class="gesture-guide-step-copy">Choose a letter that exists in the dataset.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">2</div><div class="gesture-guide-step-copy">Show one clear hand and let the page compare it to the stored templates.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">3</div><div class="gesture-guide-step-copy">If the dataset match is weak, run synchronization for the current letter.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">4</div><div class="gesture-guide-step-copy">The final score blends the dataset match and your personal sync points.</div></div>
                         </div>
                     </div>
 
@@ -95,7 +95,7 @@
                     </div>
 
                     <div class="gesture-controls">
-                        <button id="start-sync-btn" type="button">Start Synchronization</button>
+                        <button id="start-sync-btn" type="button">Start Sync</button>
                         <button id="capture-sync-btn" type="button">Capture Current Point</button>
                         <button id="reset-sync-btn" type="button" class="secondary">Clear Calibration</button>
                     </div>
@@ -106,14 +106,14 @@
                                 <div class="gesture-label">Synchronization</div>
                                 <h3 id="sync-step-title">Run the five-point synchronization</h3>
                             </div>
-                            <div class="gesture-check-badge is-neutral">A only</div>
+                            <div id="sync-step-badge" class="gesture-check-badge is-neutral">Not started</div>
                         </div>
-                        <p id="calibration-status" class="gesture-calibration-status">No saved synchronization yet. Start once and capture the five points in order.</p>
-                        <div id="sync-step-copy" class="gesture-diagnostics-summary">The page will ask for wrist, thumb, index, middle, and pinky. After that it will only compare live coordinates to your saved A pose.</div>
+                        <p id="calibration-status" class="gesture-calibration-status">No saved synchronization yet. The page can already score from the dataset, but sync is available if you want to personalize the current letter.</p>
+                        <div id="sync-step-copy" class="gesture-diagnostics-summary">If you start synchronization, the page will ask for wrist, thumb, index, middle, and pinky for the current letter.</div>
                     </div>
 
                     <div class="gesture-checklist-card">
-                        <div class="gesture-label">Coordinate Match</div>
+                        <div class="gesture-label">Match Breakdown</div>
                         <div id="score-breakdown" class="gesture-checklist"></div>
                     </div>
                 </section>
@@ -134,7 +134,7 @@
 
                     <div class="gesture-help-card">
                         <div class="gesture-label">Tips</div>
-                        <p>Keep one clear hand in frame, make the fist large enough for stable tracking, and during synchronization press capture only when the highlighted point is steady.</p>
+                        <p>Keep one clear hand in frame, make the hand large enough for stable tracking, and if you use synchronization only press capture when the highlighted point is steady.</p>
                         <button id="retry-camera-btn" type="button" class="secondary gesture-retry-btn">Retry Camera</button>
                     </div>
 
@@ -142,7 +142,7 @@
                         <div class="gesture-diagnostics-header">
                             <div>
                                 <div class="gesture-label">Diagnostics</div>
-                                <h3>Coordinate Sync Diagnostics</h3>
+                                <h3>Dataset Letter Diagnostics</h3>
                             </div>
                             <button id="refresh-diagnostics-btn" type="button" class="secondary">Refresh</button>
                         </div>
@@ -154,6 +154,6 @@
         </section>
     </main>
 
-    <script type="module" src="./js/alphabet-a-test.js?v=20260319-3"></script>
+    <script type="module" src="./js/alphabet-a-test.js?v=20260319-4"></script>
 </body>
 </html>
