@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ASL Landmark Dataset Letter Test</title>
+    <title>ASL JSON Letter Test</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
@@ -12,9 +12,9 @@
     <main class="gesture-page">
         <section class="gesture-shell">
             <div class="gesture-hero">
-                <div class="theme-kicker">ASL Landmark Dataset</div>
-                <h1>Dataset Letter Test</h1>
-                <p>Load landmark templates from the dataset, compare live hand coordinates to stored samples, and optionally run a personal five-point synchronization to adapt the current letter to your own hand.</p>
+                <div class="theme-kicker">ASL Landmark JSON</div>
+                <h1>JSON Letter Test</h1>
+                <p>This page only compares live hand landmarks to the stored samples from <code>landmarks_dataset.json</code>. No sync, no calibration, and no extra recognition logic.</p>
                 <div class="gesture-link-row">
                     <a class="gesture-link-btn" href="./index.html">Back To Main Trainer</a>
                 </div>
@@ -54,22 +54,22 @@
                         <div class="gesture-guide-header">
                             <div>
                                 <div class="gesture-label">How It Is Measured</div>
-                                <h3>Dataset Match + Personal Sync</h3>
+                                <h3>JSON Template Match</h3>
                             </div>
-                            <div class="gesture-check-badge is-neutral">Landmark templates</div>
+                            <div class="gesture-check-badge is-neutral">JSON only</div>
                         </div>
-                        <p class="gesture-guide-description">The page first compares the live hand to templates loaded from landmarks_dataset.json. If that is not enough, you can capture five personal points for the current letter and blend them into the final score.</p>
+                        <p class="gesture-guide-description">The page normalizes the current hand, compares it to the stored landmark samples for the selected label, and uses only that JSON distance to compute the score.</p>
                         <div class="gesture-guide-chips">
                             <span class="gesture-guide-chip">Dataset templates</span>
                             <span class="gesture-guide-chip">21 hand landmarks</span>
-                            <span class="gesture-guide-chip">5-point sync</span>
-                            <span class="gesture-guide-chip">Per-letter calibration</span>
+                            <span class="gesture-guide-chip">Per-label tolerance</span>
+                            <span class="gesture-guide-chip">No extra rules</span>
                         </div>
                         <div class="gesture-guide-steps">
                             <div class="gesture-guide-step"><div class="gesture-guide-step-index">1</div><div class="gesture-guide-step-copy">Choose a letter that exists in the dataset.</div></div>
                             <div class="gesture-guide-step"><div class="gesture-guide-step-index">2</div><div class="gesture-guide-step-copy">Show one clear hand and let the page compare it to the stored templates.</div></div>
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">3</div><div class="gesture-guide-step-copy">If the dataset match is weak, run synchronization for the current letter.</div></div>
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">4</div><div class="gesture-guide-step-copy">The final score blends the dataset match and your personal sync points.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">3</div><div class="gesture-guide-step-copy">Adjust the hand until the JSON match score rises.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">4</div><div class="gesture-guide-step-copy">Hold the letter inside the threshold to confirm the match.</div></div>
                         </div>
                     </div>
 
@@ -94,24 +94,6 @@
                         </article>
                     </div>
 
-                    <div class="gesture-controls">
-                        <button id="start-sync-btn" type="button">Start Sync</button>
-                        <button id="capture-sync-btn" type="button">Capture Current Point</button>
-                        <button id="reset-sync-btn" type="button" class="secondary">Clear Calibration</button>
-                    </div>
-
-                    <div class="gesture-calibration-card">
-                        <div class="gesture-calibration-header">
-                            <div>
-                                <div class="gesture-label">Synchronization</div>
-                                <h3 id="sync-step-title">Run the five-point synchronization</h3>
-                            </div>
-                            <div id="sync-step-badge" class="gesture-check-badge is-neutral">Not started</div>
-                        </div>
-                        <p id="calibration-status" class="gesture-calibration-status">No saved synchronization yet. The page can already score from the dataset, but sync is available if you want to personalize the current letter.</p>
-                        <div id="sync-step-copy" class="gesture-diagnostics-summary">If you start synchronization, the page will ask for wrist, thumb, index, middle, and pinky for the current letter.</div>
-                    </div>
-
                     <div class="gesture-checklist-card">
                         <div class="gesture-label">Match Breakdown</div>
                         <div id="score-breakdown" class="gesture-checklist"></div>
@@ -134,7 +116,7 @@
 
                     <div class="gesture-help-card">
                         <div class="gesture-label">Tips</div>
-                        <p>Keep one clear hand in frame, make the hand large enough for stable tracking, and if you use synchronization only press capture when the highlighted point is steady.</p>
+                        <p>Keep one clear hand in frame, make the hand large enough for stable tracking, and try to match the same hand orientation as the stored JSON samples.</p>
                         <button id="retry-camera-btn" type="button" class="secondary gesture-retry-btn">Retry Camera</button>
                     </div>
 
@@ -142,7 +124,7 @@
                         <div class="gesture-diagnostics-header">
                             <div>
                                 <div class="gesture-label">Diagnostics</div>
-                                <h3>Dataset Letter Diagnostics</h3>
+                                <h3>JSON Letter Diagnostics</h3>
                             </div>
                             <button id="refresh-diagnostics-btn" type="button" class="secondary">Refresh</button>
                         </div>
@@ -154,6 +136,6 @@
         </section>
     </main>
 
-    <script type="module" src="./js/alphabet-a-test.js?v=20260319-4"></script>
+    <script type="module" src="./js/alphabet-a-test.js?v=20260319-5"></script>
 </body>
 </html>

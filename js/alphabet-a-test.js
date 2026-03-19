@@ -5,10 +5,16 @@ import {
     stopMediaStream
 } from "./sign-model-runtime.js?v=20260318-9";
 
-const DATASET_URL = "./datasets/landmarks_dataset.json?v=20260319-1";
+const DATASET_URL = "./datasets/landmarks_dataset.json?v=20260319-2";
 const HOLD_SECONDS = 1.0;
 const SCORE_THRESHOLD = 0.58;
-const SYNC_STORAGE_PREFIX = "gesture-trainer.dataset-sync.";
+const CANVAS_POINT_ORDER = [
+    { id: "wrist", landmarkIndex: 0 },
+    { id: "thumb", landmarkIndex: 4 },
+    { id: "index", landmarkIndex: 8 },
+    { id: "middle", landmarkIndex: 12 },
+    { id: "pinky", landmarkIndex: 20 }
+];
 const LABEL_DESCRIPTIONS = {
     A: "Closed fist with the thumb resting along the side or front of the fist.",
     B: "Flat open hand with four straight fingers up and the thumb folded across the palm.",
@@ -21,64 +27,11 @@ const LABEL_DESCRIPTIONS = {
     I: "Only the pinky extends while the other fingers stay curled.",
     J: "Start from I and sweep the pinky in a J motion."
 };
-const SYNC_STEPS = [
-    {
-        id: "wrist",
-        landmarkIndex: 0,
-        title: "Show the base of the hand",
-        description: "Hold the current letter and capture the wrist when the hand is steady."
-    },
-    {
-        id: "thumb",
-        landmarkIndex: 4,
-        title: "Show the thumb",
-        description: "Keep the thumb clearly visible for the current letter, then capture it."
-    },
-    {
-        id: "index",
-        landmarkIndex: 8,
-        title: "Show the index finger",
-        description: "Make the index fingertip visible in the current pose and capture it."
-    },
-    {
-        id: "middle",
-        landmarkIndex: 12,
-        title: "Show the middle finger",
-        description: "Hold the middle fingertip steady and capture it."
-    },
-    {
-        id: "pinky",
-        landmarkIndex: 20,
-        title: "Show the pinky",
-        description: "Capture the pinky last to finish the personal synchronization."
-    }
-];
-const CANVAS_POINT_ORDER = [
-    { id: "wrist", landmarkIndex: 0 },
-    { id: "thumb", landmarkIndex: 4 },
-    { id: "index", landmarkIndex: 8 },
-    { id: "middle", landmarkIndex: 12 },
-    { id: "pinky", landmarkIndex: 20 }
-];
-const SYNC_POINT_TOLERANCES = {
-    wrist: 0.5,
-    thumb: 0.25,
-    index: 0.21,
-    middle: 0.21,
-    pinky: 0.23
-};
 
 const labelSwitch = document.getElementById("dataset-label-switch");
 const letterTitle = document.getElementById("letter-title");
 const targetCopy = document.getElementById("target-copy");
 const datasetCountBadge = document.getElementById("dataset-count-badge");
-const calibrationStatus = document.getElementById("calibration-status");
-const syncStepBadge = document.getElementById("sync-step-badge");
-const syncStepTitle = document.getElementById("sync-step-title");
-const syncStepCopy = document.getElementById("sync-step-copy");
-const startSyncBtn = document.getElementById("start-sync-btn");
-const captureSyncBtn = document.getElementById("capture-sync-btn");
-const resetSyncBtn = document.getElementById("reset-sync-btn");
 const gestureScore = document.getElementById("gesture-score");
 const gestureStatus = document.getElementById("gesture-status");
 const holdProgressBar = document.getElementById("hold-progress-bar");
@@ -104,11 +57,7 @@ let lastCameraError = "";
 let permissionState = "prompt";
 let datasetState = null;
 let selectedLabel = "";
-let personalSync = null;
-let syncSession = null;
-let latestFrameSample = null;
-let latestDatasetMatch = null;
-let latestSyncMatch = null;
+let latestMatch = null;
 
 function clamp01(value) {
     return Math.max(0, Math.min(1, value));
@@ -139,20 +88,6 @@ function vectorDistance(left, right) {
         total += Math.hypot(left[index] - right[index], left[index + 1] - right[index + 1]);
     }
     return total / (left.length / 2);
-}
-
-function scoreDistance(left, right, tolerance) {
-    return clamp01(1 - (Math.hypot(left.x - right.x, left.y - right.y) / tolerance));
-}
-
-function getBodyFrame(results) {
-    const pose = results.poseLandmarks || [];
-    const leftShoulder = pose[11];
-    const rightShoulder = pose[12];
-    const shouldersVisible = visiblePoint(leftShoulder) && visiblePoint(rightShoulder);
-    const center = shouldersVisible ? averagePoint([leftShoulder, rightShoulder]) : { x: 0.5, y: 0.52 };
-    const scale = shouldersVisible ? Math.max(0.08, distance2D(leftShoulder, rightShoulder)) : 0.18;
-    return { center, scale };
 }
 
 function estimateHandScale(handLandmarks) {
@@ -233,49 +168,17 @@ function getPrimaryHand(results) {
     };
 }
 
-function normalizeToBody(point, bodyFrame) {
-    return {
-        x: (point.x - bodyFrame.center.x) / bodyFrame.scale,
-        y: (point.y - bodyFrame.center.y) / bodyFrame.scale
-    };
-}
-
-function normalizeToWrist(point, wrist, bodyFrame) {
-    return {
-        x: (point.x - wrist.x) / bodyFrame.scale,
-        y: (point.y - wrist.y) / bodyFrame.scale
-    };
-}
-
-function buildLiveFrameSample(results) {
+function buildLiveVector(results) {
     const { handsVisible, handLandmarks } = getPrimaryHand(results);
     if (!handLandmarks) {
-        return { handsVisible, sample: null };
+        return { handsVisible, localVector: null, rawHand: null };
     }
 
     const localPoints = normalizeHandToLocal(handLandmarks);
-    const bodyFrame = getBodyFrame(results);
-    const wrist = handLandmarks[0];
-
     return {
         handsVisible,
-        sample: {
-            localVector: flattenPoints(localPoints),
-            syncPoints: {
-                wristBody: normalizeToBody(wrist, bodyFrame),
-                thumb: normalizeToWrist(handLandmarks[4], wrist, bodyFrame),
-                index: normalizeToWrist(handLandmarks[8], wrist, bodyFrame),
-                middle: normalizeToWrist(handLandmarks[12], wrist, bodyFrame),
-                pinky: normalizeToWrist(handLandmarks[20], wrist, bodyFrame)
-            },
-            rawPoints: {
-                wrist,
-                thumb: handLandmarks[4],
-                index: handLandmarks[8],
-                middle: handLandmarks[12],
-                pinky: handLandmarks[20]
-            }
-        }
+        localVector: flattenPoints(localPoints),
+        rawHand: handLandmarks
     };
 }
 
@@ -334,43 +237,6 @@ function currentLabelInfo() {
     return selectedLabel && datasetState ? datasetState.byLabel.get(selectedLabel) : null;
 }
 
-function syncStorageKey(label) {
-    return `${SYNC_STORAGE_PREFIX}${label}.v1`;
-}
-
-function loadPersonalSync(label) {
-    try {
-        const raw = window.localStorage.getItem(syncStorageKey(label));
-        return raw ? JSON.parse(raw) : null;
-    } catch (_error) {
-        return null;
-    }
-}
-
-function savePersonalSync(label, calibration) {
-    window.localStorage.setItem(syncStorageKey(label), JSON.stringify(calibration));
-    personalSync = calibration;
-}
-
-function clearPersonalSync(label) {
-    window.localStorage.removeItem(syncStorageKey(label));
-    personalSync = null;
-}
-
-function emptySyncCalibration(label) {
-    return {
-        version: 1,
-        label,
-        wristBody: null,
-        points: {},
-        capturedAt: null
-    };
-}
-
-function getCurrentSyncStep() {
-    return syncSession ? SYNC_STEPS[syncSession.stepIndex] || null : null;
-}
-
 function renderLabelButtons() {
     labelSwitch.innerHTML = "";
     if (!datasetState?.labels?.length) {
@@ -394,36 +260,23 @@ function renderLabelButtons() {
 function renderStaticCopy() {
     const info = currentLabelInfo();
     letterTitle.textContent = selectedLabel || "Waiting";
-    targetCopy.textContent = LABEL_DESCRIPTIONS[selectedLabel] || `Match the live hand to the dataset templates for ${selectedLabel}.`;
+    targetCopy.textContent = LABEL_DESCRIPTIONS[selectedLabel] || `Match the live hand to the JSON templates for ${selectedLabel}.`;
     datasetCountBadge.textContent = info ? `${info.count} samples` : "0 samples";
 }
 
-function renderBreakdown(datasetMatch, syncMatch, finalScore) {
+function renderBreakdown(match) {
     scoreBreakdown.innerHTML = "";
-    const rows = [
-        {
-            label: "Dataset match",
-            value: datasetMatch ? datasetMatch.score : null
-        },
-        {
-            label: "Personal sync",
-            value: syncMatch ? syncMatch.score : null
-        },
-        {
-            label: "Final score",
-            value: typeof finalScore === "number" ? finalScore : null
-        }
-    ];
-
-    if (syncMatch?.pointScores) {
-        rows.push(
-            { label: "Wrist point", value: syncMatch.pointScores.wrist },
-            { label: "Thumb point", value: syncMatch.pointScores.thumb },
-            { label: "Index point", value: syncMatch.pointScores.index },
-            { label: "Middle point", value: syncMatch.pointScores.middle },
-            { label: "Pinky point", value: syncMatch.pointScores.pinky }
-        );
-    }
+    const rows = match
+        ? [
+            { label: "JSON match", value: match.score },
+            { label: "Best template distance", value: Math.max(0, 1 - (match.bestDistance / Math.max(match.tolerance, 0.001))) },
+            { label: "Label tolerance", value: Math.max(0, 1 - match.tolerance) }
+        ]
+        : [
+            { label: "JSON match", value: null },
+            { label: "Best template distance", value: null },
+            { label: "Label tolerance", value: null }
+        ];
 
     rows.forEach(rowData => {
         const row = document.createElement("div");
@@ -431,7 +284,7 @@ function renderBreakdown(datasetMatch, syncMatch, finalScore) {
         const hasValue = typeof rowData.value === "number";
         const percent = hasValue ? Math.round(rowData.value * 100) : null;
         const tone = !hasValue ? "is-neutral" : percent >= 70 ? "is-good" : percent >= 40 ? "is-neutral" : "is-bad";
-        const text = hasValue ? `${percent}%` : "Not active";
+        const text = hasValue ? `${percent}%` : "Waiting";
         row.innerHTML = `<span>${rowData.label}</span><span class="gesture-check-badge ${tone}">${text}</span>`;
         scoreBreakdown.appendChild(row);
     });
@@ -446,42 +299,16 @@ function renderStatus(score, holdProgress, text) {
     gestureScore.classList.toggle("is-strong", percent >= 70);
 }
 
-function renderSyncPanel() {
-    const step = getCurrentSyncStep();
-    if (step) {
-        syncStepBadge.textContent = `Step ${syncSession.stepIndex + 1} / ${SYNC_STEPS.length}`;
-        syncStepTitle.textContent = `${selectedLabel}: ${step.title}`;
-        syncStepCopy.textContent = step.description;
-        calibrationStatus.textContent = `Personal synchronization is active for ${selectedLabel}. Capture the five points in order.`;
-        startSyncBtn.textContent = "Restart Sync";
-        captureSyncBtn.disabled = false;
-        return;
-    }
-
-    if (personalSync?.wristBody) {
-        syncStepBadge.textContent = "Saved";
-        syncStepTitle.textContent = `Saved sync for ${selectedLabel}`;
-        syncStepCopy.textContent = `The final score is blended with your saved five-point calibration for ${selectedLabel}.`;
-        calibrationStatus.textContent = `Dataset templates are active and your personal sync is also loaded for ${selectedLabel}.`;
-        startSyncBtn.textContent = "Run Sync Again";
-        captureSyncBtn.disabled = true;
-        return;
-    }
-
-    syncStepBadge.textContent = "Optional";
-    syncStepTitle.textContent = `No personal sync for ${selectedLabel}`;
-    syncStepCopy.textContent = `The page already scores ${selectedLabel} from the dataset. Run synchronization only if you want to personalize the current letter.`;
-    calibrationStatus.textContent = `Dataset templates are active. Personal sync for ${selectedLabel} has not been created yet.`;
-    startSyncBtn.textContent = "Start Sync";
-    captureSyncBtn.disabled = true;
-}
-
 function renderDiagnostics() {
     diagnosticsList.innerHTML = "";
     const info = currentLabelInfo();
-    const step = getCurrentSyncStep();
-
     const rows = [
+        {
+            label: "Matcher",
+            value: "Only JSON templates are used. Live landmarks are normalized and compared directly to stored landmark samples.",
+            badge: "JSON only",
+            tone: "is-good"
+        },
         {
             label: "Dataset",
             value: datasetState
@@ -515,25 +342,15 @@ function renderDiagnostics() {
             value: trackedHands ? `Detected ${trackedHands} hand(s) in the current frame.` : "No hands are currently visible.",
             badge: `${trackedHands}`,
             tone: trackedHands ? "is-good" : "is-neutral"
-        },
-        {
-            label: "Personal sync",
-            value: step
-                ? `Active step: ${step.title}.`
-                : personalSync?.wristBody
-                    ? `Saved sync is active for ${selectedLabel}.`
-                    : `No personal sync for ${selectedLabel}.`,
-            badge: step ? "Active" : personalSync?.wristBody ? "Saved" : "Not used",
-            tone: step || personalSync?.wristBody ? "is-good" : "is-neutral"
         }
     ];
 
-    if (latestDatasetMatch) {
+    if (latestMatch) {
         rows.push({
-            label: "Dataset score",
-            value: `Best template distance ${latestDatasetMatch.bestDistance.toFixed(3)} against ${selectedLabel}.`,
-            badge: `${Math.round(latestDatasetMatch.score * 100)}%`,
-            tone: latestDatasetMatch.score >= 0.7 ? "is-good" : latestDatasetMatch.score >= 0.4 ? "is-neutral" : "is-bad"
+            label: "Best match",
+            value: `Distance ${latestMatch.bestDistance.toFixed(3)} against ${selectedLabel}.`,
+            badge: `${Math.round(latestMatch.score * 100)}%`,
+            tone: latestMatch.score >= 0.7 ? "is-good" : latestMatch.score >= 0.4 ? "is-neutral" : "is-bad"
         });
     }
 
@@ -553,24 +370,18 @@ function renderDiagnostics() {
         diagnosticsList.appendChild(row);
     });
 
-    diagnosticsSummary.textContent = step
-        ? `Sync step ${syncSession.stepIndex + 1} of ${SYNC_STEPS.length} for ${selectedLabel}: ${step.title}.`
-        : info
-            ? `Live hand is compared to ${info.count} stored template sample(s) for ${selectedLabel}.`
-            : "Waiting for dataset label selection.";
+    diagnosticsSummary.textContent = info
+        ? `Live hand is compared only to ${info.count} stored JSON template sample(s) for ${selectedLabel}.`
+        : "Waiting for dataset label selection.";
 }
 
 function setSelectedLabel(label) {
     selectedLabel = label;
-    personalSync = loadPersonalSync(label);
-    syncSession = null;
     holdStartedAt = 0;
-    latestDatasetMatch = null;
-    latestSyncMatch = null;
+    latestMatch = null;
     renderLabelButtons();
     renderStaticCopy();
-    renderSyncPanel();
-    renderBreakdown(null, null, null);
+    renderBreakdown(null);
     renderStatus(0, 0, `Show ${selectedLabel} to the camera.`);
     renderDiagnostics();
 }
@@ -582,39 +393,14 @@ function scoreDatasetTemplate(localVector, labelInfo) {
     }
     return {
         bestDistance,
+        tolerance: labelInfo.tolerance,
         score: clamp01(1 - (bestDistance / labelInfo.tolerance))
-    };
-}
-
-function scorePersonalSync(syncPoints, calibration) {
-    if (!calibration?.wristBody) {
-        return null;
-    }
-
-    const pointScores = {
-        wrist: scoreDistance(syncPoints.wristBody, calibration.wristBody, SYNC_POINT_TOLERANCES.wrist),
-        thumb: scoreDistance(syncPoints.thumb, calibration.points.thumb, SYNC_POINT_TOLERANCES.thumb),
-        index: scoreDistance(syncPoints.index, calibration.points.index, SYNC_POINT_TOLERANCES.index),
-        middle: scoreDistance(syncPoints.middle, calibration.points.middle, SYNC_POINT_TOLERANCES.middle),
-        pinky: scoreDistance(syncPoints.pinky, calibration.points.pinky, SYNC_POINT_TOLERANCES.pinky)
-    };
-
-    return {
-        pointScores,
-        score: (
-            pointScores.wrist +
-            pointScores.thumb +
-            pointScores.index +
-            pointScores.middle +
-            pointScores.pinky
-        ) / 5
     };
 }
 
 function drawTracking(results) {
     outputCanvas.width = inputVideo.videoWidth || 1280;
     outputCanvas.height = inputVideo.videoHeight || 720;
-    const step = getCurrentSyncStep();
 
     canvasCtx.save();
     canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
@@ -622,17 +408,16 @@ function drawTracking(results) {
     canvasCtx.scale(-1, 1);
     canvasCtx.drawImage(results.image, 0, 0, outputCanvas.width, outputCanvas.height);
 
-    const { handLandmarks } = getPrimaryHand(results);
-    if (handLandmarks) {
+    const { rawHand } = buildLiveVector(results);
+    if (rawHand) {
         CANVAS_POINT_ORDER.forEach(({ id, landmarkIndex }) => {
-            const point = handLandmarks[landmarkIndex];
+            const point = rawHand[landmarkIndex];
             if (!point) {
                 return;
             }
-            const isTarget = step?.id === id;
             canvasCtx.beginPath();
-            canvasCtx.fillStyle = isTarget ? "rgba(248, 113, 113, 0.98)" : id === "wrist" ? "rgba(251, 191, 36, 0.98)" : "rgba(56, 189, 248, 0.98)";
-            canvasCtx.arc(point.x * outputCanvas.width, point.y * outputCanvas.height, isTarget ? 10 : id === "wrist" ? 8 : 7, 0, Math.PI * 2);
+            canvasCtx.fillStyle = id === "wrist" ? "rgba(251, 191, 36, 0.98)" : "rgba(56, 189, 248, 0.98)";
+            canvasCtx.arc(point.x * outputCanvas.width, point.y * outputCanvas.height, id === "wrist" ? 8 : 7, 0, Math.PI * 2);
             canvasCtx.fill();
         });
     }
@@ -641,50 +426,34 @@ function drawTracking(results) {
 }
 
 function handleLiveFrame(results) {
-    const { handsVisible, sample } = buildLiveFrameSample(results);
+    const { handsVisible, localVector } = buildLiveVector(results);
     trackedHands = handsVisible;
-    latestFrameSample = sample;
 
-    if (!sample) {
-        latestDatasetMatch = null;
-        latestSyncMatch = null;
+    if (!localVector) {
+        latestMatch = null;
         holdStartedAt = 0;
-        renderBreakdown(null, null, null);
+        renderBreakdown(null);
         renderStatus(0, 0, selectedLabel ? `Show ${selectedLabel} with one clear hand.` : "Waiting for dataset.");
-        renderDiagnostics();
-        return;
-    }
-
-    if (syncSession) {
-        latestDatasetMatch = null;
-        latestSyncMatch = null;
-        holdStartedAt = 0;
-        renderBreakdown(null, null, null);
-        renderStatus(0, 0, `${getCurrentSyncStep().title}. When it looks stable, press Capture Current Point.`);
         renderDiagnostics();
         return;
     }
 
     const labelInfo = currentLabelInfo();
     if (!labelInfo) {
+        latestMatch = null;
         holdStartedAt = 0;
-        renderBreakdown(null, null, null);
+        renderBreakdown(null);
         renderStatus(0, 0, "Waiting for dataset labels.");
         renderDiagnostics();
         return;
     }
 
-    latestDatasetMatch = scoreDatasetTemplate(sample.localVector, labelInfo);
-    latestSyncMatch = scorePersonalSync(sample.syncPoints, personalSync);
-    const finalScore = latestSyncMatch
-        ? ((latestDatasetMatch.score * 0.35) + (latestSyncMatch.score * 0.65))
-        : latestDatasetMatch.score;
-
-    renderBreakdown(latestDatasetMatch, latestSyncMatch, finalScore);
+    latestMatch = scoreDatasetTemplate(localVector, labelInfo);
+    renderBreakdown(latestMatch);
 
     let holdProgress = 0;
-    let statusText = `Adjust ${selectedLabel} until it matches the dataset template.`;
-    if (finalScore >= SCORE_THRESHOLD) {
+    let statusText = `Adjust ${selectedLabel} until it matches the JSON templates.`;
+    if (latestMatch.score >= SCORE_THRESHOLD) {
         if (!holdStartedAt) {
             holdStartedAt = performance.now();
         }
@@ -697,7 +466,7 @@ function handleLiveFrame(results) {
         holdStartedAt = 0;
     }
 
-    renderStatus(finalScore, holdProgress, statusText);
+    renderStatus(latestMatch.score, holdProgress, statusText);
     renderDiagnostics();
 }
 
@@ -712,79 +481,6 @@ async function loadDataset() {
         throw new Error("The dataset did not contain any hand landmark samples.");
     }
     setSelectedLabel(datasetState.labels.includes("A") ? "A" : datasetState.labels[0]);
-}
-
-function startSynchronization() {
-    if (!selectedLabel) {
-        renderStatus(0, 0, "Wait for the dataset to load first.");
-        return;
-    }
-    syncSession = {
-        label: selectedLabel,
-        stepIndex: 0,
-        calibration: emptySyncCalibration(selectedLabel)
-    };
-    holdStartedAt = 0;
-    renderSyncPanel();
-    renderBreakdown(null, null, null);
-    renderStatus(0, 0, `Synchronization started for ${selectedLabel}. Capture the wrist first.`);
-    renderDiagnostics();
-}
-
-function finishSynchronization() {
-    syncSession.calibration.capturedAt = new Date().toISOString();
-    savePersonalSync(selectedLabel, syncSession.calibration);
-    syncSession = null;
-    holdStartedAt = 0;
-    renderSyncPanel();
-    renderStatus(0, 0, `Synchronization saved for ${selectedLabel}.`);
-    renderDiagnostics();
-}
-
-function captureCurrentStep() {
-    if (!syncSession) {
-        startSynchronization();
-        return;
-    }
-    if (!latestFrameSample?.syncPoints) {
-        renderStatus(0, 0, "Show one clear hand before capturing the current point.");
-        return;
-    }
-
-    const step = getCurrentSyncStep();
-    if (!step) {
-        return;
-    }
-
-    if (step.id === "wrist") {
-        syncSession.calibration.wristBody = { ...latestFrameSample.syncPoints.wristBody };
-    } else {
-        syncSession.calibration.points[step.id] = { ...latestFrameSample.syncPoints[step.id] };
-    }
-
-    syncSession.stepIndex += 1;
-    if (syncSession.stepIndex >= SYNC_STEPS.length) {
-        finishSynchronization();
-        return;
-    }
-
-    renderSyncPanel();
-    renderStatus(0, 0, `Saved ${step.id} for ${selectedLabel}.`);
-    renderDiagnostics();
-}
-
-function resetSynchronization() {
-    if (!selectedLabel) {
-        return;
-    }
-    syncSession = null;
-    clearPersonalSync(selectedLabel);
-    latestSyncMatch = null;
-    holdStartedAt = 0;
-    renderSyncPanel();
-    renderBreakdown(latestDatasetMatch, null, latestDatasetMatch?.score ?? null);
-    renderStatus(0, 0, `Personal sync cleared for ${selectedLabel}.`);
-    renderDiagnostics();
 }
 
 async function refreshPermissionState() {
@@ -850,14 +546,11 @@ async function startCamera() {
     }
 }
 
-startSyncBtn.addEventListener("click", startSynchronization);
-captureSyncBtn.addEventListener("click", captureCurrentStep);
-resetSyncBtn.addEventListener("click", resetSynchronization);
 retryCameraBtn.addEventListener("click", () => startCamera().catch(console.error));
 refreshDiagnosticsBtn.addEventListener("click", () => refreshPermissionState().catch(console.error));
 window.addEventListener("beforeunload", () => stopLoop());
 
-renderBreakdown(null, null, null);
+renderBreakdown(null);
 renderDiagnostics();
 
 Promise.all([loadDataset(), refreshPermissionState()])
