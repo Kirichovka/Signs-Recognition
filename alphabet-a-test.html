@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ASL JSON kNN Test</title>
+    <title>ASL JSON kNN Classifier</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -13,8 +13,8 @@
         <section class="gesture-shell">
             <div class="gesture-hero">
                 <div class="theme-kicker">ASL Landmark kNN</div>
-                <h1>JSON kNN Test</h1>
-                <p>This page classifies the live hand against all saved samples from <code>landmarks_dataset.json</code> using k-nearest neighbors, mirrored hand matching, vote weights, confidence, similarity, and the top 3 nearest matches.</p>
+                <h1>JSON Hand Classifier</h1>
+                <p>This page classifies the current hand against all saved samples from <code>landmarks_dataset.json</code>. It mirrors the hand, finds the 5 nearest neighbors, votes by <code>exp(-4 * distance)</code>, and shows the winning label with confidence, similarity, and top matches.</p>
                 <div class="gesture-link-row">
                     <a class="gesture-link-btn" href="./index.html">Back To Main Trainer</a>
                 </div>
@@ -24,78 +24,80 @@
                 <section class="gesture-panel gesture-target-panel">
                     <div class="gesture-target-header">
                         <div>
-                            <div class="gesture-label">Best Label</div>
-                            <h2 id="letter-title">Waiting</h2>
+                            <div class="gesture-label">Predicted Label</div>
+                            <h2 id="prediction-label">Waiting</h2>
                         </div>
-                        <div id="dataset-count-badge" class="gesture-step">0 total samples</div>
+                        <div id="dataset-badge" class="gesture-step">0 samples</div>
                     </div>
 
                     <div class="gesture-hand-card">
                         <div class="gesture-emoji" aria-hidden="true">
                             <svg viewBox="0 0 100 100" class="gesture-preview-svg">
                                 <defs>
-                                    <linearGradient id="aTestBg" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <linearGradient id="jsonKnnBg" x1="0%" y1="0%" x2="100%" y2="100%">
                                         <stop offset="0%" stop-color="#2563eb" />
                                         <stop offset="100%" stop-color="#38bdf8" />
                                     </linearGradient>
                                 </defs>
-                                <rect x="2" y="2" width="96" height="96" rx="24" fill="url(#aTestBg)" />
-                                <text x="50" y="58" text-anchor="middle" font-size="36" font-weight="800" fill="rgba(255,255,255,0.98)" font-family="Arial, sans-serif">A</text>
+                                <rect x="2" y="2" width="96" height="96" rx="24" fill="url(#jsonKnnBg)" />
+                                <text x="50" y="58" text-anchor="middle" font-size="28" font-weight="800" fill="rgba(255,255,255,0.98)" font-family="Arial, sans-serif">kNN</text>
                             </svg>
                         </div>
                         <div class="gesture-hand-copy">
-                            <div class="gesture-label">Target</div>
-                            <p id="target-copy">Show one clear hand to the camera and the page will classify it against all saved JSON samples.</p>
+                            <div class="gesture-label">Prediction Summary</div>
+                            <p id="prediction-copy">Show one clear hand to the camera and the classifier will compare it against every saved JSON sample.</p>
                         </div>
                     </div>
 
                     <div class="gesture-guide-card">
                         <div class="gesture-guide-header">
                             <div>
-                                <div class="gesture-label">How It Is Measured</div>
-                                <h3>kNN Over All Samples</h3>
+                                <div class="gesture-label">Algorithm</div>
+                                <h3>Exact JSON kNN Flow</h3>
                             </div>
-                            <div class="gesture-check-badge is-neutral">JSON only</div>
+                            <div class="gesture-check-badge is-neutral">No extra heuristics</div>
                         </div>
-                        <p class="gesture-guide-description">The page picks the strongest current hand, normalizes all 21 landmarks, builds a mirrored version, compares both to every saved sample, takes the 5 nearest neighbors, and predicts the label by weighted votes.</p>
+                        <p class="gesture-guide-description">The page uses the saved hand landmark samples exactly as the dataset matcher does: primary hand by handedness score, wrist-centered normalization, max 2D scale, z weighting, mirrored x version, 5 nearest neighbors, weighted voting, confidence, and similarity.</p>
                         <div class="gesture-guide-chips">
-                            <span class="gesture-guide-chip">Dataset templates</span>
-                            <span class="gesture-guide-chip">21 hand landmarks</span>
-                            <span class="gesture-guide-chip">Mirrored hand</span>
-                            <span class="gesture-guide-chip">5 nearest neighbors</span>
+                            <span class="gesture-guide-chip">Primary hand</span>
+                            <span class="gesture-guide-chip">21 landmarks</span>
+                            <span class="gesture-guide-chip">Mirrored x</span>
+                            <span class="gesture-guide-chip">5 neighbors</span>
+                            <span class="gesture-guide-chip">exp(-4d)</span>
                         </div>
                         <div class="gesture-guide-steps">
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">1</div><div class="gesture-guide-step-copy">Show one clear hand to the camera.</div></div>
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">2</div><div class="gesture-guide-step-copy">The live hand is normalized relative to the wrist and scale.</div></div>
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">3</div><div class="gesture-guide-step-copy">The 5 nearest saved samples vote with <code>exp(-4 * distance)</code>.</div></div>
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">4</div><div class="gesture-guide-step-copy">The winning label, confidence, similarity, and top 3 nearest matches are shown below.</div></div>
-                        </div>
-                    </div>
-
-                    <div class="gesture-progress-card">
-                        <div class="gesture-progress-header">
-                            <span>Hold Progress</span>
-                            <span id="hold-progress-value">0%</span>
-                        </div>
-                        <div class="gesture-progress-track" aria-hidden="true">
-                            <div id="hold-progress-bar" class="gesture-progress-bar"></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">1</div><div class="gesture-guide-step-copy">Pick the live hand with the best handedness score.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">2</div><div class="gesture-guide-step-copy">Normalize all 21 landmarks relative to the wrist and maximum 2D spread.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">3</div><div class="gesture-guide-step-copy">Compare both the normal and mirrored live hand to every saved sample.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">4</div><div class="gesture-guide-step-copy">Take the 5 nearest neighbors and vote by <code>exp(-4 * distance)</code>.</div></div>
                         </div>
                     </div>
 
                     <div class="gesture-score-grid">
                         <article class="gesture-score-card">
                             <div class="gesture-label">Confidence</div>
-                            <div id="gesture-score" class="gesture-score">0%</div>
+                            <div id="confidence-score" class="gesture-score">0%</div>
                         </article>
                         <article class="gesture-score-card">
-                            <div class="gesture-label">Status</div>
-                            <div id="gesture-status" class="gesture-status">Waiting for hand</div>
+                            <div class="gesture-label">Similarity</div>
+                            <div id="similarity-score" class="gesture-score">0%</div>
                         </article>
                     </div>
 
+                    <div class="gesture-calibration-card">
+                        <div class="gesture-calibration-header">
+                            <div>
+                                <div class="gesture-label">Classifier Status</div>
+                                <h3>Live Result</h3>
+                            </div>
+                            <div id="status-badge" class="gesture-check-badge is-neutral">Idle</div>
+                        </div>
+                        <p id="classifier-status" class="gesture-calibration-status">Waiting for a hand in the frame.</p>
+                    </div>
+
                     <div class="gesture-checklist-card">
-                        <div class="gesture-label">Prediction Breakdown</div>
-                        <div id="score-breakdown" class="gesture-checklist"></div>
+                        <div class="gesture-label">Top Matches</div>
+                        <div id="top-matches" class="gesture-checklist"></div>
                     </div>
                 </section>
 
@@ -103,7 +105,7 @@
                     <div class="gesture-camera-header">
                         <div>
                             <div class="gesture-label">Live Camera</div>
-                            <h2>Mirror View</h2>
+                            <h2>Hand Landmarks</h2>
                         </div>
                         <div id="camera-state" class="gesture-camera-state">Starting camera...</div>
                     </div>
@@ -115,7 +117,7 @@
 
                     <div class="gesture-help-card">
                         <div class="gesture-label">Tips</div>
-                        <p>Keep one clear hand in frame, make the hand large enough for stable tracking, and keep the pose steady so the nearest-neighbor votes converge.</p>
+                        <p>Keep one clear hand in frame, avoid motion blur, and hold the pose steady for a moment so the nearest-neighbor votes can stabilize.</p>
                         <button id="retry-camera-btn" type="button" class="secondary gesture-retry-btn">Retry Camera</button>
                     </div>
 
@@ -123,7 +125,7 @@
                         <div class="gesture-diagnostics-header">
                             <div>
                                 <div class="gesture-label">Diagnostics</div>
-                                <h3>kNN Diagnostics</h3>
+                                <h3>Classifier State</h3>
                             </div>
                             <button id="refresh-diagnostics-btn" type="button" class="secondary">Refresh</button>
                         </div>
@@ -135,6 +137,6 @@
         </section>
     </main>
 
-    <script type="module" src="./js/alphabet-a-test.js?v=20260319-6"></script>
+    <script type="module" src="./js/alphabet-a-test.js?v=20260319-7"></script>
 </body>
 </html>
