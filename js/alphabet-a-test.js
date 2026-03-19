@@ -5,16 +5,12 @@ import {
     stopMediaStream
 } from "./sign-model-runtime.js?v=20260318-9";
 
-const DATASET_URL = "./datasets/landmarks_dataset.json?v=20260319-2";
+const DATASET_URL = "./datasets/landmarks_dataset.json?v=20260319-3";
 const HOLD_SECONDS = 1.0;
-const SCORE_THRESHOLD = 0.58;
-const CANVAS_POINT_ORDER = [
-    { id: "wrist", landmarkIndex: 0 },
-    { id: "thumb", landmarkIndex: 4 },
-    { id: "index", landmarkIndex: 8 },
-    { id: "middle", landmarkIndex: 12 },
-    { id: "pinky", landmarkIndex: 20 }
-];
+const SCORE_THRESHOLD = 0.55;
+const K_NEIGHBORS = 5;
+const Z_WEIGHT = 0.35;
+const DRAW_POINT_INDICES = [0, 4, 8, 12, 20];
 const LABEL_DESCRIPTIONS = {
     A: "Closed fist with the thumb resting along the side or front of the fist.",
     B: "Flat open hand with four straight fingers up and the thumb folded across the palm.",
@@ -28,7 +24,6 @@ const LABEL_DESCRIPTIONS = {
     J: "Start from I and sweep the pinky in a J motion."
 };
 
-const labelSwitch = document.getElementById("dataset-label-switch");
 const letterTitle = document.getElementById("letter-title");
 const targetCopy = document.getElementById("target-copy");
 const datasetCountBadge = document.getElementById("dataset-count-badge");
@@ -49,54 +44,18 @@ const canvasCtx = outputCanvas.getContext("2d");
 
 let activeStream = null;
 let animationFrameId = 0;
-let holistic = null;
+let handsModel = null;
 let holdStartedAt = 0;
+let holdLabel = "";
 let cameraReady = false;
 let trackedHands = 0;
 let lastCameraError = "";
 let permissionState = "prompt";
 let datasetState = null;
-let selectedLabel = "";
-let latestMatch = null;
+let latestPrediction = null;
 
 function clamp01(value) {
     return Math.max(0, Math.min(1, value));
-}
-
-function distance2D(left, right) {
-    return Math.hypot(left.x - right.x, left.y - right.y);
-}
-
-function averagePoint(points) {
-    return {
-        x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
-        y: points.reduce((sum, point) => sum + point.y, 0) / points.length
-    };
-}
-
-function visiblePoint(point, minVisibility = 0.2) {
-    return !!point && (point.visibility === undefined || point.visibility >= minVisibility);
-}
-
-function flattenPoints(points) {
-    return points.flatMap(point => [point.x, point.y]);
-}
-
-function vectorDistance(left, right) {
-    let total = 0;
-    for (let index = 0; index < left.length; index += 2) {
-        total += Math.hypot(left[index] - right[index], left[index + 1] - right[index + 1]);
-    }
-    return total / (left.length / 2);
-}
-
-function estimateHandScale(handLandmarks) {
-    return Math.max(
-        0.02,
-        distance2D(handLandmarks[0], handLandmarks[9]),
-        distance2D(handLandmarks[5], handLandmarks[17]),
-        distance2D(handLandmarks[0], handLandmarks[17])
-    );
 }
 
 function sortLandmarks(landmarks) {
@@ -104,226 +63,261 @@ function sortLandmarks(landmarks) {
     return sorted.length >= 21 ? sorted.slice(0, 21) : null;
 }
 
-function normalizeHandToLocal(landmarks) {
+function normalizeLandmarks(landmarks) {
     if (!landmarks || landmarks.length < 21) {
         return null;
     }
 
     const wrist = landmarks[0];
-    const indexMcp = landmarks[5];
-    const middleMcp = landmarks[9];
-    const pinkyMcp = landmarks[17];
-
-    const sideRaw = {
-        x: pinkyMcp.x - indexMcp.x,
-        y: pinkyMcp.y - indexMcp.y
-    };
-    const sideLength = Math.hypot(sideRaw.x, sideRaw.y) || 1;
-    const sideAxis = {
-        x: sideRaw.x / sideLength,
-        y: sideRaw.y / sideLength
-    };
-    let upAxis = {
-        x: -sideAxis.y,
-        y: sideAxis.x
-    };
-    const middleVector = {
-        x: middleMcp.x - wrist.x,
-        y: middleMcp.y - wrist.y
-    };
-    if (((middleVector.x * upAxis.x) + (middleVector.y * upAxis.y)) < 0) {
-        upAxis = { x: -upAxis.x, y: -upAxis.y };
-    }
-
+    const relative = landmarks.map(point => ({
+        x: point.x - wrist.x,
+        y: point.y - wrist.y,
+        z: point.z - wrist.z
+    }));
     const scale = Math.max(
-        0.02,
-        (distance2D(indexMcp, pinkyMcp) + distance2D(wrist, middleMcp)) / 2
+        0.0001,
+        ...relative.map(point => Math.hypot(point.x, point.y))
     );
 
-    return landmarks.map(point => {
-        const vector = {
-            x: point.x - wrist.x,
-            y: point.y - wrist.y
-        };
-        return {
-            x: ((vector.x * sideAxis.x) + (vector.y * sideAxis.y)) / scale,
-            y: ((vector.x * upAxis.x) + (vector.y * upAxis.y)) / scale
-        };
-    });
+    return relative.map(point => ({
+        x: point.x / scale,
+        y: point.y / scale,
+        z: (point.z / scale) * Z_WEIGHT
+    }));
 }
 
-function getPrimaryHand(results) {
-    const hands = [results.leftHandLandmarks, results.rightHandLandmarks].filter(Boolean);
-    if (!hands.length) {
-        return { handsVisible: 0, handLandmarks: null };
-    }
-
-    const ranked = hands
-        .map(handLandmarks => ({ handLandmarks, scale: estimateHandScale(handLandmarks) }))
-        .sort((left, right) => right.scale - left.scale);
-
-    return {
-        handsVisible: hands.length,
-        handLandmarks: ranked[0].handLandmarks
-    };
+function mirrorNormalizedLandmarks(landmarks) {
+    return landmarks.map(point => ({
+        x: -point.x,
+        y: point.y,
+        z: point.z
+    }));
 }
 
-function buildLiveVector(results) {
-    const { handsVisible, handLandmarks } = getPrimaryHand(results);
-    if (!handLandmarks) {
-        return { handsVisible, localVector: null, rawHand: null };
-    }
-
-    const localPoints = normalizeHandToLocal(handLandmarks);
-    return {
-        handsVisible,
-        localVector: flattenPoints(localPoints),
-        rawHand: handLandmarks
-    };
+function flattenNormalizedLandmarks(landmarks) {
+    return landmarks.flatMap(point => [point.x, point.y, point.z]);
 }
 
-function computeLabelTolerance(templateVectors) {
-    if (templateVectors.length <= 1) {
-        return 0.26;
+function landmarkDistance(leftVector, rightVector) {
+    let total = 0;
+    const pointCount = leftVector.length / 3;
+    for (let index = 0; index < leftVector.length; index += 3) {
+        total += Math.hypot(
+            leftVector[index] - rightVector[index],
+            leftVector[index + 1] - rightVector[index + 1],
+            leftVector[index + 2] - rightVector[index + 2]
+        );
     }
-
-    const pairDistances = [];
-    for (let left = 0; left < templateVectors.length; left += 1) {
-        for (let right = left + 1; right < templateVectors.length; right += 1) {
-            pairDistances.push(vectorDistance(templateVectors[left], templateVectors[right]));
-        }
-    }
-
-    const maxPair = Math.max(...pairDistances);
-    return Math.max(0.24, Math.min(0.6, (maxPair * 0.9) + 0.08));
+    return total / pointCount;
 }
 
 function buildDatasetState(dataset) {
-    const byLabel = new Map();
+    const labelsWithSamples = new Set();
+    const normalizedSamples = [];
 
     for (const sample of dataset.samples || []) {
-        const hand = sortLandmarks(sample.hands?.[0]?.image_landmarks);
-        if (!hand) {
+        const hands = (sample.hands || [])
+            .map(hand => ({
+                handedness: hand.handedness || "Unknown",
+                score: Number.isFinite(hand.score) ? hand.score : 0,
+                landmarks: sortLandmarks(hand.image_landmarks)
+            }))
+            .filter(hand => hand.landmarks);
+
+        if (!hands.length) {
             continue;
         }
-        const localPoints = normalizeHandToLocal(hand);
-        const vector = flattenPoints(localPoints);
-        const label = sample.label;
-        if (!byLabel.has(label)) {
-            byLabel.set(label, []);
+
+        const primaryHand = hands.sort((left, right) => right.score - left.score)[0];
+        const normalized = normalizeLandmarks(primaryHand.landmarks);
+        if (!normalized) {
+            continue;
         }
-        byLabel.get(label).push({
+
+        labelsWithSamples.add(sample.label);
+        normalizedSamples.push({
             id: sample.id,
+            label: sample.label,
             capturedAt: sample.captured_at,
-            vector
+            handedness: primaryHand.handedness,
+            handednessScore: primaryHand.score,
+            vector: flattenNormalizedLandmarks(normalized)
         });
     }
 
-    const labels = [...byLabel.keys()].sort((left, right) => left.localeCompare(right));
-    const labelMap = new Map(labels.map(label => {
-        const templates = byLabel.get(label);
-        return [label, {
-            label,
-            templates,
-            count: templates.length,
-            tolerance: computeLabelTolerance(templates.map(template => template.vector))
-        }];
+    return {
+        labels: [...labelsWithSamples].sort((left, right) => left.localeCompare(right)),
+        sampleCount: normalizedSamples.length,
+        samples: normalizedSamples
+    };
+}
+
+function getPrimaryLiveHand(results) {
+    const liveHands = (results.multiHandLandmarks || []).map((landmarks, index) => {
+        const classification = results.multiHandedness?.[index]?.classification?.[0];
+        return {
+            landmarks,
+            handedness: classification?.label || "Unknown",
+            handednessScore: Number.isFinite(classification?.score) ? classification.score : 0
+        };
+    });
+
+    if (!liveHands.length) {
+        return { handsVisible: 0, primary: null };
+    }
+
+    const primary = [...liveHands].sort((left, right) => right.handednessScore - left.handednessScore)[0];
+    return {
+        handsVisible: liveHands.length,
+        primary
+    };
+}
+
+function classifyLiveHand(results) {
+    const { handsVisible, primary } = getPrimaryLiveHand(results);
+    if (!primary) {
+        return { handsVisible, prediction: null, rawHand: null };
+    }
+
+    const normalized = normalizeLandmarks(primary.landmarks);
+    const mirrored = mirrorNormalizedLandmarks(normalized);
+    const normalVector = flattenNormalizedLandmarks(normalized);
+    const mirroredVector = flattenNormalizedLandmarks(mirrored);
+
+    const distances = datasetState.samples
+        .map(sample => {
+            const normalDistance = landmarkDistance(normalVector, sample.vector);
+            const mirroredDistance = landmarkDistance(mirroredVector, sample.vector);
+            return {
+                id: sample.id,
+                label: sample.label,
+                handedness: sample.handedness,
+                handednessScore: sample.handednessScore,
+                distance: Math.min(normalDistance, mirroredDistance)
+            };
+        })
+        .sort((left, right) => left.distance - right.distance);
+
+    const neighbors = distances.slice(0, Math.min(K_NEIGHBORS, distances.length)).map(neighbor => ({
+        ...neighbor,
+        vote: Math.exp(-4 * neighbor.distance)
     }));
 
-    return { labels, byLabel: labelMap };
+    const votesByLabel = new Map();
+    for (const neighbor of neighbors) {
+        votesByLabel.set(neighbor.label, (votesByLabel.get(neighbor.label) || 0) + neighbor.vote);
+    }
+
+    const winner = [...votesByLabel.entries()].sort((left, right) => right[1] - left[1])[0];
+    const totalVotes = neighbors.reduce((sum, neighbor) => sum + neighbor.vote, 0);
+    const bestDistance = neighbors.length ? neighbors[0].distance : Number.POSITIVE_INFINITY;
+    const winnerLabel = winner?.[0] || "Unknown";
+    const winnerVotes = winner?.[1] || 0;
+    const confidence = totalVotes ? winnerVotes / totalVotes : 0;
+    const similarity = Number.isFinite(bestDistance) ? 1 / (1 + bestDistance) : 0;
+
+    return {
+        handsVisible,
+        rawHand: primary.landmarks,
+        prediction: {
+            label: winnerLabel,
+            confidence,
+            similarity,
+            bestDistance,
+            neighbors,
+            liveHandedness: primary.handedness,
+            liveHandednessScore: primary.handednessScore
+        }
+    };
 }
 
-function currentLabelInfo() {
-    return selectedLabel && datasetState ? datasetState.byLabel.get(selectedLabel) : null;
-}
-
-function renderLabelButtons() {
-    labelSwitch.innerHTML = "";
-    if (!datasetState?.labels?.length) {
+function renderStaticCopy(prediction) {
+    if (!prediction) {
+        letterTitle.textContent = "Waiting";
+        targetCopy.textContent = "Show one clear hand to the camera and the page will classify it against all saved JSON samples.";
         return;
     }
 
-    datasetState.labels.forEach(label => {
-        const info = datasetState.byLabel.get(label);
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "gesture-mode-btn";
-        button.textContent = `${label} (${info.count})`;
-        if (label === selectedLabel) {
-            button.classList.add("is-active");
-        }
-        button.addEventListener("click", () => setSelectedLabel(label));
-        labelSwitch.appendChild(button);
-    });
+    letterTitle.textContent = prediction.label;
+    targetCopy.textContent = LABEL_DESCRIPTIONS[prediction.label] || `Nearest-neighbor match for ${prediction.label}.`;
 }
 
-function renderStaticCopy() {
-    const info = currentLabelInfo();
-    letterTitle.textContent = selectedLabel || "Waiting";
-    targetCopy.textContent = LABEL_DESCRIPTIONS[selectedLabel] || `Match the live hand to the JSON templates for ${selectedLabel}.`;
-    datasetCountBadge.textContent = info ? `${info.count} samples` : "0 samples";
-}
-
-function renderBreakdown(match) {
+function renderBreakdown(prediction) {
     scoreBreakdown.innerHTML = "";
-    const rows = match
+
+    const rows = !prediction
         ? [
-            { label: "JSON match", value: match.score },
-            { label: "Best template distance", value: Math.max(0, 1 - (match.bestDistance / Math.max(match.tolerance, 0.001))) },
-            { label: "Label tolerance", value: Math.max(0, 1 - match.tolerance) }
+            { label: "Best label", value: "Waiting", tone: "is-neutral" },
+            { label: "Confidence", value: "Waiting", tone: "is-neutral" },
+            { label: "Similarity", value: "Waiting", tone: "is-neutral" }
         ]
         : [
-            { label: "JSON match", value: null },
-            { label: "Best template distance", value: null },
-            { label: "Label tolerance", value: null }
+            {
+                label: "Best label",
+                value: prediction.label,
+                tone: "is-good"
+            },
+            {
+                label: "Confidence",
+                value: `${Math.round(prediction.confidence * 100)}%`,
+                tone: prediction.confidence >= 0.7 ? "is-good" : prediction.confidence >= 0.4 ? "is-neutral" : "is-bad"
+            },
+            {
+                label: "Similarity",
+                value: `${Math.round(prediction.similarity * 100)}%`,
+                tone: prediction.similarity >= 0.7 ? "is-good" : prediction.similarity >= 0.4 ? "is-neutral" : "is-bad"
+            },
+            {
+                label: "Nearest 1",
+                value: prediction.neighbors[0] ? `${prediction.neighbors[0].label} · d=${prediction.neighbors[0].distance.toFixed(3)}` : "Missing",
+                tone: prediction.neighbors[0] ? "is-good" : "is-neutral"
+            },
+            {
+                label: "Nearest 2",
+                value: prediction.neighbors[1] ? `${prediction.neighbors[1].label} · d=${prediction.neighbors[1].distance.toFixed(3)}` : "Missing",
+                tone: prediction.neighbors[1] ? "is-neutral" : "is-neutral"
+            },
+            {
+                label: "Nearest 3",
+                value: prediction.neighbors[2] ? `${prediction.neighbors[2].label} · d=${prediction.neighbors[2].distance.toFixed(3)}` : "Missing",
+                tone: prediction.neighbors[2] ? "is-neutral" : "is-neutral"
+            }
         ];
 
     rows.forEach(rowData => {
         const row = document.createElement("div");
         row.className = "gesture-check-row";
-        const hasValue = typeof rowData.value === "number";
-        const percent = hasValue ? Math.round(rowData.value * 100) : null;
-        const tone = !hasValue ? "is-neutral" : percent >= 70 ? "is-good" : percent >= 40 ? "is-neutral" : "is-bad";
-        const text = hasValue ? `${percent}%` : "Waiting";
-        row.innerHTML = `<span>${rowData.label}</span><span class="gesture-check-badge ${tone}">${text}</span>`;
+        row.innerHTML = `<span>${rowData.label}</span><span class="gesture-check-badge ${rowData.tone}">${rowData.value}</span>`;
         scoreBreakdown.appendChild(row);
     });
 }
 
-function renderStatus(score, holdProgress, text) {
-    const percent = Math.round(score * 100);
-    gestureScore.textContent = `${percent}%`;
+function renderStatus(prediction, holdProgress, text) {
+    const confidencePercent = Math.round((prediction?.confidence || 0) * 100);
+    gestureScore.textContent = `${confidencePercent}%`;
     gestureStatus.textContent = text;
     holdProgressBar.style.width = `${Math.round(holdProgress * 100)}%`;
     holdProgressValue.textContent = `${Math.round(holdProgress * 100)}%`;
-    gestureScore.classList.toggle("is-strong", percent >= 70);
+    gestureScore.classList.toggle("is-strong", confidencePercent >= 70);
 }
 
-function renderDiagnostics() {
+function renderDiagnostics(prediction) {
     diagnosticsList.innerHTML = "";
-    const info = currentLabelInfo();
+
     const rows = [
         {
             label: "Matcher",
-            value: "Only JSON templates are used. Live landmarks are normalized and compared directly to stored landmark samples.",
-            badge: "JSON only",
+            value: "kNN over all JSON samples with mirrored hand matching and weighted label voting.",
+            badge: "kNN",
             tone: "is-good"
         },
         {
             label: "Dataset",
             value: datasetState
-                ? `Loaded ${datasetState.labels.length} labels from landmarks_dataset.json.`
+                ? `Loaded ${datasetState.labels.length} labels and ${datasetState.sampleCount} samples from landmarks_dataset.json.`
                 : "Dataset is not loaded yet.",
             badge: datasetState ? "Loaded" : "Waiting",
             tone: datasetState ? "is-good" : "is-neutral"
-        },
-        {
-            label: "Selected label",
-            value: info
-                ? `${selectedLabel} with ${info.count} template sample(s), tolerance ${info.tolerance.toFixed(2)}.`
-                : "No dataset label selected yet.",
-            badge: selectedLabel || "None",
-            tone: info ? "is-good" : "is-neutral"
         },
         {
             label: "Camera state",
@@ -345,13 +339,21 @@ function renderDiagnostics() {
         }
     ];
 
-    if (latestMatch) {
-        rows.push({
-            label: "Best match",
-            value: `Distance ${latestMatch.bestDistance.toFixed(3)} against ${selectedLabel}.`,
-            badge: `${Math.round(latestMatch.score * 100)}%`,
-            tone: latestMatch.score >= 0.7 ? "is-good" : latestMatch.score >= 0.4 ? "is-neutral" : "is-bad"
-        });
+    if (prediction) {
+        rows.push(
+            {
+                label: "Primary hand",
+                value: `${prediction.liveHandedness} (${Math.round(prediction.liveHandednessScore * 100)}% handedness score).`,
+                badge: prediction.liveHandedness,
+                tone: "is-good"
+            },
+            {
+                label: "Prediction",
+                value: `${prediction.label} with confidence ${Math.round(prediction.confidence * 100)}% and similarity ${Math.round(prediction.similarity * 100)}%.`,
+                badge: prediction.label,
+                tone: prediction.confidence >= 0.7 ? "is-good" : prediction.confidence >= 0.4 ? "is-neutral" : "is-bad"
+            }
+        );
     }
 
     if (lastCameraError) {
@@ -370,35 +372,12 @@ function renderDiagnostics() {
         diagnosticsList.appendChild(row);
     });
 
-    diagnosticsSummary.textContent = info
-        ? `Live hand is compared only to ${info.count} stored JSON template sample(s) for ${selectedLabel}.`
-        : "Waiting for dataset label selection.";
+    diagnosticsSummary.textContent = prediction
+        ? `Best label ${prediction.label}. Top 3 nearest matches are shown in the breakdown.`
+        : "Waiting for a live hand to classify against the JSON dataset.";
 }
 
-function setSelectedLabel(label) {
-    selectedLabel = label;
-    holdStartedAt = 0;
-    latestMatch = null;
-    renderLabelButtons();
-    renderStaticCopy();
-    renderBreakdown(null);
-    renderStatus(0, 0, `Show ${selectedLabel} to the camera.`);
-    renderDiagnostics();
-}
-
-function scoreDatasetTemplate(localVector, labelInfo) {
-    let bestDistance = Number.POSITIVE_INFINITY;
-    for (const template of labelInfo.templates) {
-        bestDistance = Math.min(bestDistance, vectorDistance(localVector, template.vector));
-    }
-    return {
-        bestDistance,
-        tolerance: labelInfo.tolerance,
-        score: clamp01(1 - (bestDistance / labelInfo.tolerance))
-    };
-}
-
-function drawTracking(results) {
+function drawTracking(rawHand) {
     outputCanvas.width = inputVideo.videoWidth || 1280;
     outputCanvas.height = inputVideo.videoHeight || 720;
 
@@ -406,18 +385,17 @@ function drawTracking(results) {
     canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
     canvasCtx.translate(outputCanvas.width, 0);
     canvasCtx.scale(-1, 1);
-    canvasCtx.drawImage(results.image, 0, 0, outputCanvas.width, outputCanvas.height);
+    canvasCtx.drawImage(inputVideo, 0, 0, outputCanvas.width, outputCanvas.height);
 
-    const { rawHand } = buildLiveVector(results);
     if (rawHand) {
-        CANVAS_POINT_ORDER.forEach(({ id, landmarkIndex }) => {
-            const point = rawHand[landmarkIndex];
+        DRAW_POINT_INDICES.forEach(index => {
+            const point = rawHand[index];
             if (!point) {
                 return;
             }
             canvasCtx.beginPath();
-            canvasCtx.fillStyle = id === "wrist" ? "rgba(251, 191, 36, 0.98)" : "rgba(56, 189, 248, 0.98)";
-            canvasCtx.arc(point.x * outputCanvas.width, point.y * outputCanvas.height, id === "wrist" ? 8 : 7, 0, Math.PI * 2);
+            canvasCtx.fillStyle = index === 0 ? "rgba(251, 191, 36, 0.98)" : "rgba(56, 189, 248, 0.98)";
+            canvasCtx.arc(point.x * outputCanvas.width, point.y * outputCanvas.height, index === 0 ? 8 : 7, 0, Math.PI * 2);
             canvasCtx.fill();
         });
     }
@@ -425,49 +403,47 @@ function drawTracking(results) {
     canvasCtx.restore();
 }
 
-function handleLiveFrame(results) {
-    const { handsVisible, localVector } = buildLiveVector(results);
-    trackedHands = handsVisible;
-
-    if (!localVector) {
-        latestMatch = null;
-        holdStartedAt = 0;
-        renderBreakdown(null);
-        renderStatus(0, 0, selectedLabel ? `Show ${selectedLabel} with one clear hand.` : "Waiting for dataset.");
-        renderDiagnostics();
-        return;
-    }
-
-    const labelInfo = currentLabelInfo();
-    if (!labelInfo) {
-        latestMatch = null;
-        holdStartedAt = 0;
-        renderBreakdown(null);
-        renderStatus(0, 0, "Waiting for dataset labels.");
-        renderDiagnostics();
-        return;
-    }
-
-    latestMatch = scoreDatasetTemplate(localVector, labelInfo);
-    renderBreakdown(latestMatch);
-
+function handlePredictionFrame(prediction) {
     let holdProgress = 0;
-    let statusText = `Adjust ${selectedLabel} until it matches the JSON templates.`;
-    if (latestMatch.score >= SCORE_THRESHOLD) {
+    let statusText = "Show one clear hand to classify.";
+
+    if (!prediction) {
+        holdStartedAt = 0;
+        holdLabel = "";
+        renderStatus(null, 0, statusText);
+        renderStaticCopy(null);
+        renderBreakdown(null);
+        renderDiagnostics(null);
+        return;
+    }
+
+    const stableLabel = holdLabel === prediction.label;
+    if (prediction.confidence >= SCORE_THRESHOLD && stableLabel) {
         if (!holdStartedAt) {
             holdStartedAt = performance.now();
         }
-        const elapsed = (performance.now() - holdStartedAt) / 1000;
-        holdProgress = Math.min(1, elapsed / HOLD_SECONDS);
-        statusText = elapsed >= HOLD_SECONDS
-            ? `${selectedLabel} matched.`
-            : `Good ${selectedLabel}. Keep holding.`;
+    } else if (prediction.confidence >= SCORE_THRESHOLD) {
+        holdLabel = prediction.label;
+        holdStartedAt = performance.now();
     } else {
+        holdLabel = prediction.label;
         holdStartedAt = 0;
     }
 
-    renderStatus(latestMatch.score, holdProgress, statusText);
-    renderDiagnostics();
+    if (holdStartedAt) {
+        const elapsed = (performance.now() - holdStartedAt) / 1000;
+        holdProgress = Math.min(1, elapsed / HOLD_SECONDS);
+        statusText = elapsed >= HOLD_SECONDS
+            ? `Recognized as ${prediction.label}.`
+            : `Best label ${prediction.label}. Keep holding.`;
+    } else {
+        statusText = `Best label ${prediction.label}. Raise confidence by matching the nearest samples more closely.`;
+    }
+
+    renderStatus(prediction, holdProgress, statusText);
+    renderStaticCopy(prediction);
+    renderBreakdown(prediction);
+    renderDiagnostics(prediction);
 }
 
 async function loadDataset() {
@@ -477,15 +453,15 @@ async function loadDataset() {
     }
     const dataset = await response.json();
     datasetState = buildDatasetState(dataset);
-    if (!datasetState.labels.length) {
-        throw new Error("The dataset did not contain any hand landmark samples.");
+    if (!datasetState.sampleCount) {
+        throw new Error("The dataset did not contain any usable hand samples.");
     }
-    setSelectedLabel(datasetState.labels.includes("A") ? "A" : datasetState.labels[0]);
+    datasetCountBadge.textContent = `${datasetState.sampleCount} total samples`;
 }
 
 async function refreshPermissionState() {
     permissionState = await getCameraPermissionState();
-    renderDiagnostics();
+    renderDiagnostics(latestPrediction);
 }
 
 function stopLoop() {
@@ -498,31 +474,35 @@ function stopLoop() {
     cameraReady = false;
 }
 
-function onHolisticResults(results) {
-    drawTracking(results);
+function onHandsResults(results) {
     cameraReady = true;
+    trackedHands = results.multiHandLandmarks?.length || 0;
     cameraState.textContent = "Camera is live";
-    handleLiveFrame(results);
+
+    const { prediction, rawHand } = datasetState ? classifyLiveHand(results) : { prediction: null, rawHand: null };
+    latestPrediction = prediction;
+    drawTracking(rawHand);
+    handlePredictionFrame(prediction);
 }
 
 async function startCamera() {
     stopLoop();
     lastCameraError = "";
     cameraState.textContent = "Starting camera...";
-    renderStatus(0, 0, "Waiting for camera access.");
+    renderStatus(null, 0, "Waiting for camera access.");
     await refreshPermissionState();
 
-    if (!holistic) {
-        holistic = new globalThis.Holistic({
-            locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
+    if (!handsModel) {
+        handsModel = new globalThis.Hands({
+            locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
-        holistic.setOptions({
+        handsModel.setOptions({
+            maxNumHands: 2,
             modelComplexity: 1,
-            smoothLandmarks: true,
             minDetectionConfidence: 0.5,
             minTrackingConfidence: 0.5
         });
-        holistic.onResults(onHolisticResults);
+        handsModel.onResults(onHandsResults);
     }
 
     try {
@@ -534,15 +514,15 @@ async function startCamera() {
                 animationFrameId = requestAnimationFrame(processFrame);
                 return;
             }
-            await holistic.send({ image: inputVideo });
+            await handsModel.send({ image: inputVideo });
             animationFrameId = requestAnimationFrame(processFrame);
         };
         animationFrameId = requestAnimationFrame(processFrame);
     } catch (error) {
         lastCameraError = describeCameraError(error);
         cameraState.textContent = "Camera access failed";
-        renderStatus(0, 0, lastCameraError);
-        renderDiagnostics();
+        renderStatus(null, 0, lastCameraError);
+        renderDiagnostics(null);
     }
 }
 
@@ -551,12 +531,12 @@ refreshDiagnosticsBtn.addEventListener("click", () => refreshPermissionState().c
 window.addEventListener("beforeunload", () => stopLoop());
 
 renderBreakdown(null);
-renderDiagnostics();
+renderDiagnostics(null);
 
 Promise.all([loadDataset(), refreshPermissionState()])
     .then(() => startCamera())
     .catch(error => {
         lastCameraError = error.message;
-        renderStatus(0, 0, error.message);
-        renderDiagnostics();
+        renderStatus(null, 0, error.message);
+        renderDiagnostics(null);
     });

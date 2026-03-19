@@ -3,32 +3,31 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ASL JSON Letter Test</title>
+    <title>ASL JSON kNN Test</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
     <main class="gesture-page">
         <section class="gesture-shell">
             <div class="gesture-hero">
-                <div class="theme-kicker">ASL Landmark JSON</div>
-                <h1>JSON Letter Test</h1>
-                <p>This page only compares live hand landmarks to the stored samples from <code>landmarks_dataset.json</code>. No sync, no calibration, and no extra recognition logic.</p>
+                <div class="theme-kicker">ASL Landmark kNN</div>
+                <h1>JSON kNN Test</h1>
+                <p>This page classifies the live hand against all saved samples from <code>landmarks_dataset.json</code> using k-nearest neighbors, mirrored hand matching, vote weights, confidence, similarity, and the top 3 nearest matches.</p>
                 <div class="gesture-link-row">
                     <a class="gesture-link-btn" href="./index.html">Back To Main Trainer</a>
                 </div>
-                <div id="dataset-label-switch" class="gesture-mode-switch" role="group" aria-label="Dataset letters"></div>
             </div>
 
             <div class="gesture-layout">
                 <section class="gesture-panel gesture-target-panel">
                     <div class="gesture-target-header">
                         <div>
-                            <div class="gesture-label">Target Letter</div>
-                            <h2 id="letter-title">Letter A</h2>
+                            <div class="gesture-label">Best Label</div>
+                            <h2 id="letter-title">Waiting</h2>
                         </div>
-                        <div id="dataset-count-badge" class="gesture-step">0 samples</div>
+                        <div id="dataset-count-badge" class="gesture-step">0 total samples</div>
                     </div>
 
                     <div class="gesture-hand-card">
@@ -46,7 +45,7 @@
                         </div>
                         <div class="gesture-hand-copy">
                             <div class="gesture-label">Target</div>
-                            <p id="target-copy">Make a closed fist, keep the fingers curled, and rest the thumb across the side/front of the fist.</p>
+                            <p id="target-copy">Show one clear hand to the camera and the page will classify it against all saved JSON samples.</p>
                         </div>
                     </div>
 
@@ -54,22 +53,22 @@
                         <div class="gesture-guide-header">
                             <div>
                                 <div class="gesture-label">How It Is Measured</div>
-                                <h3>JSON Template Match</h3>
+                                <h3>kNN Over All Samples</h3>
                             </div>
                             <div class="gesture-check-badge is-neutral">JSON only</div>
                         </div>
-                        <p class="gesture-guide-description">The page normalizes the current hand, compares it to the stored landmark samples for the selected label, and uses only that JSON distance to compute the score.</p>
+                        <p class="gesture-guide-description">The page picks the strongest current hand, normalizes all 21 landmarks, builds a mirrored version, compares both to every saved sample, takes the 5 nearest neighbors, and predicts the label by weighted votes.</p>
                         <div class="gesture-guide-chips">
                             <span class="gesture-guide-chip">Dataset templates</span>
                             <span class="gesture-guide-chip">21 hand landmarks</span>
-                            <span class="gesture-guide-chip">Per-label tolerance</span>
-                            <span class="gesture-guide-chip">No extra rules</span>
+                            <span class="gesture-guide-chip">Mirrored hand</span>
+                            <span class="gesture-guide-chip">5 nearest neighbors</span>
                         </div>
                         <div class="gesture-guide-steps">
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">1</div><div class="gesture-guide-step-copy">Choose a letter that exists in the dataset.</div></div>
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">2</div><div class="gesture-guide-step-copy">Show one clear hand and let the page compare it to the stored templates.</div></div>
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">3</div><div class="gesture-guide-step-copy">Adjust the hand until the JSON match score rises.</div></div>
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">4</div><div class="gesture-guide-step-copy">Hold the letter inside the threshold to confirm the match.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">1</div><div class="gesture-guide-step-copy">Show one clear hand to the camera.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">2</div><div class="gesture-guide-step-copy">The live hand is normalized relative to the wrist and scale.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">3</div><div class="gesture-guide-step-copy">The 5 nearest saved samples vote with <code>exp(-4 * distance)</code>.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">4</div><div class="gesture-guide-step-copy">The winning label, confidence, similarity, and top 3 nearest matches are shown below.</div></div>
                         </div>
                     </div>
 
@@ -85,7 +84,7 @@
 
                     <div class="gesture-score-grid">
                         <article class="gesture-score-card">
-                            <div class="gesture-label">Current Letter Score</div>
+                            <div class="gesture-label">Confidence</div>
                             <div id="gesture-score" class="gesture-score">0%</div>
                         </article>
                         <article class="gesture-score-card">
@@ -95,7 +94,7 @@
                     </div>
 
                     <div class="gesture-checklist-card">
-                        <div class="gesture-label">Match Breakdown</div>
+                        <div class="gesture-label">Prediction Breakdown</div>
                         <div id="score-breakdown" class="gesture-checklist"></div>
                     </div>
                 </section>
@@ -116,7 +115,7 @@
 
                     <div class="gesture-help-card">
                         <div class="gesture-label">Tips</div>
-                        <p>Keep one clear hand in frame, make the hand large enough for stable tracking, and try to match the same hand orientation as the stored JSON samples.</p>
+                        <p>Keep one clear hand in frame, make the hand large enough for stable tracking, and keep the pose steady so the nearest-neighbor votes converge.</p>
                         <button id="retry-camera-btn" type="button" class="secondary gesture-retry-btn">Retry Camera</button>
                     </div>
 
@@ -124,7 +123,7 @@
                         <div class="gesture-diagnostics-header">
                             <div>
                                 <div class="gesture-label">Diagnostics</div>
-                                <h3>JSON Letter Diagnostics</h3>
+                                <h3>kNN Diagnostics</h3>
                             </div>
                             <button id="refresh-diagnostics-btn" type="button" class="secondary">Refresh</button>
                         </div>
@@ -136,6 +135,6 @@
         </section>
     </main>
 
-    <script type="module" src="./js/alphabet-a-test.js?v=20260319-5"></script>
+    <script type="module" src="./js/alphabet-a-test.js?v=20260319-6"></script>
 </body>
 </html>
