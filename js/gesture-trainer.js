@@ -12,7 +12,40 @@ const Z_WEIGHT = 0.35;
 const MATCH_THRESHOLD = 0.55;
 const HOLD_SECONDS = 0.8;
 const PREFERRED_WORD_ORDER = ["hello", "thanks", "yes", "no"];
-const AVAILABLE_MEDIA_ASSETS = new Set();
+const AVAILABLE_MEDIA_ASSETS = new Set([
+    "videos/bad.mp4",
+    "videos/bye.mp4",
+    "videos/come.mp4",
+    "videos/dont understand.mp4",
+    "videos/drink.mp4",
+    "videos/eat.mp4",
+    "videos/family.mp4",
+    "videos/Finish.mp4",
+    "videos/friend.mp4",
+    "videos/go ahead.mp4",
+    "videos/go.mp4",
+    "videos/good.gif",
+    "videos/great.mp4",
+    "videos/happy.mp4",
+    "videos/hello.mp4",
+    "videos/help.mp4",
+    "videos/home.mp4",
+    "videos/know in ASL.mp4",
+    "videos/love.mp4",
+    "videos/mom.mp4",
+    "videos/need.mp4",
+    "videos/no.mp4",
+    "videos/please.mp4",
+    "videos/sad.mp4",
+    "videos/sorry.mp4",
+    "videos/stop.mp4",
+    "videos/thankyou.mp4",
+    "videos/want.mp4",
+    "videos/water.mp4",
+    "videos/welcome.jpg",
+    "videos/work.mp4",
+    "videos/yes.mp4"
+]);
 const HAND_CONNECTIONS = [
     [0, 1], [1, 2], [2, 3], [3, 4],
     [0, 5], [5, 6], [6, 7], [7, 8],
@@ -59,8 +92,8 @@ const signCategories = [
             { word: "WORK", icon: "\u{1F528}", modelLabel: "WORK", video: "videos/work.mp4", desc: "Tap one fist on top of the other a couple of times." },
             { word: "STOP", icon: "\u{1F6D1}", modelLabel: "STOP", video: "videos/stop.mp4", desc: "Bring one hand down sharply onto the palm of the other." },
             { word: "GO", icon: "\u{1F3C3}", modelLabel: "GO", video: "videos/go.mp4", desc: "Point forward with both hands and move them outward." },
-            { word: "GO AHEAD", icon: "\u27A1\uFE0F", modelLabel: "GOAHEAD", video: "videos/go-ahead.mp4", desc: "Move both hands forward in a gentle pushing motion." },
-            { word: "FINISH", icon: "\u2705", modelLabel: "FINISH", video: "videos/finish.mp4", desc: "Twist both hands outward quickly from palms-in to palms-out." },
+            { word: "GO AHEAD", icon: "\u27A1\uFE0F", modelLabel: "GOAHEAD", video: "videos/go ahead.mp4", desc: "Move both hands forward in a gentle pushing motion." },
+            { word: "FINISH", icon: "\u2705", modelLabel: "FINISH", video: "videos/Finish.mp4", desc: "Twist both hands outward quickly from palms-in to palms-out." },
             { word: "COME", icon: "\u{1F44B}", modelLabel: "COME", video: "videos/come.mp4", desc: "Palm up, curl fingers toward yourself." },
             { word: "WANT", icon: "\u{1F932}", modelLabel: "WANT1", video: "videos/want.mp4", desc: "Hands open, palms up, pull them slightly toward yourself while closing fingers." },
             { word: "NEED", icon: "\u2757", modelLabel: "NEED", video: "videos/need.mp4", desc: "Make fists and pull them downward sharply." }
@@ -70,13 +103,13 @@ const signCategories = [
         name: "Social & Home",
         icon: "\u{1F46A}",
         words: [
-            { word: "MOTHER", icon: "\u{1F469}", modelLabel: "MOTHER", video: "videos/mother.mp4", desc: "Spread your fingers and touch your thumb to your chin." },
+            { word: "MOTHER", icon: "\u{1F469}", modelLabel: "MOTHER", video: "videos/mom.mp4", desc: "Spread your fingers and touch your thumb to your chin." },
             { word: "HOME", icon: "\u{1F3E0}", modelLabel: "HOME", video: "videos/home.mp4", desc: "Bring your fingers from the side of your mouth to the side of your cheek." },
             { word: "FAMILY", icon: "\u{1F46A}", modelLabel: "FAMILY", video: "videos/family.mp4", desc: "Form F handshapes with both hands and make a circle outward." },
             { word: "FRIEND", icon: "\u{1F91D}", modelLabel: "FRIEND", video: "videos/friend.mp4", desc: "Hook your index fingers together, then switch them." },
             { word: "WELCOME", icon: "\u{1F917}", modelLabel: "WELCOME1", video: "videos/welcome.jpg", desc: "Start with both hands in front of you, palms up, then bring them toward your chest." },
-            { word: "DON'T UNDERSTAND", icon: "\u{1F914}", modelLabel: "NOTUNDERSTAND", video: "videos/dont-understand.mp4", desc: "Make a confused face and twist your hand outward from your forehead." },
-            { word: "KNOW", icon: "\u{1F9E0}", modelLabel: "KNOW", video: "videos/know.mp4", desc: "Touch your fingers to your forehead." }
+            { word: "DON'T UNDERSTAND", icon: "\u{1F914}", modelLabel: "NOTUNDERSTAND", video: "videos/dont understand.mp4", desc: "Make a confused face and twist your hand outward from your forehead." },
+            { word: "KNOW", icon: "\u{1F9E0}", modelLabel: "KNOW", video: "videos/know in ASL.mp4", desc: "Touch your fingers to your forehead." }
         ]
     }
 ];
