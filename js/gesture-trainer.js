@@ -110,6 +110,10 @@ const targetDisplay = document.getElementById("target-sign-text");
 const targetDescription = document.getElementById("target-sign-description");
 const dictionaryContainer = document.getElementById("dictionary-container");
 const alphabetGrid = document.getElementById("alphabet-grid");
+const progressBar = document.getElementById("accuracy-bar");
+const progressText = document.getElementById("accuracy-text");
+const progressStatus = document.getElementById("accuracy-status");
+const successStars = document.getElementById("success-stars");
 
 let datasetState = null;
 let datasetPromise = null;
