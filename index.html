@@ -1,144 +1,181 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ASL Sign Trainer</title>
-    <link rel="stylesheet" href="./styles.css" />
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gesture Trainer | Learn ASL the Fun Way!</title>
+  <meta
+    name="description"
+    content="A child-friendly ASL learning platform using real-time AI to help you learn signs and letters."
+  >
+  <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
 </head>
-<body>
-    <main class="gesture-page">
-        <section class="gesture-shell">
-            <div class="gesture-hero">
-                <div class="theme-kicker">ASL Browser Trainer</div>
-                <h1>Practice The Signs We Trained</h1>
-                <p id="trainer-subtitle">Cycle through the trained ASL classes, line up your live landmarks with the target overlay, and hold the final pose inside the allowed tolerance.</p>
-                <div class="gesture-mode-switch" role="group" aria-label="Practice mode">
-                    <button id="mode-words-btn" type="button" class="gesture-mode-btn is-active">Words</button>
-                    <button id="mode-alphabet-btn" type="button" class="gesture-mode-btn">Alphabet</button>
-                </div>
-                <div class="gesture-link-row">
-                    <a class="gesture-link-btn" href="./alphabet-a-test.html">Open JSON Gesture Practice</a>
-                </div>
+<body data-theme="default">
+  <nav class="navbar">
+    <div class="logo-container" onclick="showPage('home-page', document.querySelector('.nav-btn'))">
+      <span class="logo-icon">ASL</span>
+      <span class="logo-text">GestureTrainer</span>
+    </div>
+
+    <div class="nav-links">
+      <button class="nav-btn active" onclick="showPage('home-page', this)">Home</button>
+      <button class="nav-btn" onclick="showPage('word-page', this)">Words</button>
+      <button class="nav-btn" onclick="showPage('alphabet-page', this)">Alphabet</button>
+      <button class="nav-btn" onclick="openPracticeMode('practice', this)">Practice</button>
+    </div>
+
+    <button id="theme-toggle" class="btn-toggle" type="button">
+      <span class="toggle-icon">View</span>
+      <span class="toggle-text">Colorblind Mode</span>
+    </button>
+  </nav>
+
+  <main>
+    <div id="home-page" class="page-content active-page">
+      <section class="hero-section">
+        <div class="hero-text-content">
+          <h1>Building an inclusive city, one sign at a time.</h1>
+          <p class="mission-text">Join the Gesture Trainer and learn ASL right from your browser. Fun, fast, and completely private.</p>
+          <div class="hero-actions">
+            <button
+              class="cta-button cta-primary"
+              onclick="openPracticeMode('alphabet', document.querySelectorAll('.nav-btn')[3])"
+            >
+              Start Learning Letters
+            </button>
+            <button
+              class="cta-button cta-secondary"
+              onclick="showPage('word-page', document.querySelectorAll('.nav-btn')[1])"
+            >
+              Open Dictionary
+            </button>
+          </div>
+        </div>
+        <div class="hero-illustration">
+          <img src="./hero.png" alt="A friendly child signing hello" class="hero-img">
+        </div>
+      </section>
+
+      <section class="why-section">
+        <h2 class="section-title">Why Gesture Trainer?</h2>
+        <div class="feature-grid">
+          <article class="info-card">
+            <div class="card-icon">Safe</div>
+            <h3>Private</h3>
+            <p>Your video never leaves your computer. Everything runs locally in your browser.</p>
+          </article>
+          <article class="info-card">
+            <div class="card-icon">Fast</div>
+            <h3>Real-Time</h3>
+            <p>Get instant feedback on your signs using MediaPipe and browser-run ONNX models.</p>
+          </article>
+          <article class="info-card">
+            <div class="card-icon">Play</div>
+            <h3>Made for Kids</h3>
+            <p>Designed with playful colors, large buttons, and accessible features for children.</p>
+          </article>
+        </div>
+        <p style="margin-top: 4rem; color: var(--text-muted); font-weight: 600;">Supports SDG 11: Sustainable Cities & Communities - Promoting Inclusivity.</p>
+      </section>
+    </div>
+
+    <div id="word-page" class="page-content">
+      <div class="dictionary-controls">
+        <h2>Visual Dictionary</h2>
+        <p>Choose a category to start learning common signs.</p>
+      </div>
+
+      <div id="dictionary-container">
+        <p style="text-align: center; padding: 3rem;">Loading Dictionary...</p>
+      </div>
+    </div>
+
+    <div id="alphabet-page" class="page-content">
+      <div class="dictionary-controls">
+        <h2>ASL Alphabet</h2>
+        <p>Learn the letters supported by the current alphabet model.</p>
+      </div>
+
+      <div class="word-grid" id="alphabet-grid"></div>
+    </div>
+
+    <div id="letter-page" class="page-content">
+      <div class="dashboard-layout">
+        <aside class="dashboard-panel">
+          <div class="panel-header">
+            <h3>Target Sign</h3>
+          </div>
+          <div class="target-display">
+            <div class="focus-letter" id="target-sign-text">A</div>
+            <div class="hint-image">
+              <p id="target-sign-description" style="font-size: 0.9rem; text-align: center;">Show the sign to the camera.</p>
             </div>
-
-            <div class="gesture-layout">
-                <section class="gesture-panel gesture-target-panel">
-                    <div class="gesture-target-header">
-                        <div>
-                            <div id="gesture-target-label" class="gesture-label">Target Sign</div>
-                            <h2 id="gesture-title">Open Palm</h2>
-                        </div>
-                        <div id="gesture-step" class="gesture-step">1 / 50</div>
-                    </div>
-
-                    <div class="gesture-hand-card">
-                        <div id="gesture-emoji" class="gesture-emoji" aria-hidden="true">OPEN</div>
-                        <div class="gesture-hand-copy">
-                            <div class="gesture-label">Template Goal</div>
-                            <p id="gesture-instruction">Show the trained sign and hold it steady.</p>
-                        </div>
-                    </div>
-
-                    <div class="gesture-guide-card">
-                        <div class="gesture-guide-header">
-                            <div>
-                                <div class="gesture-label">How To Do It</div>
-                                <h3 id="gesture-guide-title">Learning cue</h3>
-                            </div>
-                            <div id="gesture-guide-badge" class="gesture-check-badge is-neutral">Neutral space</div>
-                        </div>
-                        <p id="gesture-guide-description" class="gesture-guide-description">A short coaching hint for the current sign will appear here.</p>
-                        <div class="gesture-guide-stage" aria-hidden="true">
-                            <div class="gesture-guide-body"></div>
-                            <div id="gesture-guide-hand" class="gesture-guide-hand"></div>
-                            <div id="gesture-guide-arrow" class="gesture-guide-arrow"></div>
-                        </div>
-                        <div id="gesture-guide-chips" class="gesture-guide-chips"></div>
-                        <div id="gesture-guide-steps" class="gesture-guide-steps"></div>
-                    </div>
-
-                    <div class="gesture-progress-card">
-                        <div class="gesture-progress-header">
-                            <span>Hold Progress</span>
-                            <span id="hold-progress-value">0%</span>
-                        </div>
-                        <div class="gesture-progress-track" aria-hidden="true">
-                            <div id="hold-progress-bar" class="gesture-progress-bar"></div>
-                        </div>
-                    </div>
-
-                    <div class="gesture-calibration-card">
-                        <div class="gesture-calibration-header">
-                            <div>
-                                <div class="gesture-label">Recognition</div>
-                                <h3>Template Matcher</h3>
-                            </div>
-                            <button id="calibrate-btn" type="button">Reload Templates</button>
-                        </div>
-                        <p id="calibration-status" class="gesture-calibration-status">Loading pose templates...</p>
-                    </div>
-
-                    <div class="gesture-score-grid">
-                        <article class="gesture-score-card">
-                            <div class="gesture-label">Target Score</div>
-                            <div id="gesture-score" class="gesture-score">0%</div>
-                        </article>
-                        <article class="gesture-score-card">
-                            <div class="gesture-label">Status</div>
-                            <div id="gesture-status" class="gesture-status">Waiting for hand</div>
-                        </article>
-                    </div>
-
-                    <div class="gesture-checklist-card">
-                        <div class="gesture-label">Top Predictions</div>
-                        <div id="finger-checklist" class="gesture-checklist"></div>
-                    </div>
-
-                    <div class="gesture-controls">
-                        <button id="prev-gesture-btn" type="button" class="secondary">Previous</button>
-                        <button id="next-gesture-btn" type="button">Next</button>
-                    </div>
-                </section>
-
-                <section class="gesture-panel gesture-camera-panel">
-                    <div class="gesture-camera-header">
-                        <div>
-                            <div class="gesture-label">Live Camera</div>
-                            <h2>Mirror View</h2>
-                        </div>
-                        <div id="camera-state" class="gesture-camera-state">Starting camera...</div>
-                    </div>
-
-                    <div class="gesture-camera-stage">
-                        <video id="input-video" class="gesture-video" playsinline></video>
-                        <canvas id="output-canvas" class="gesture-canvas"></canvas>
-                    </div>
-
-                    <div class="gesture-help-card">
-                        <div class="gesture-label">Tips</div>
-                        <p id="camera-help-text">Keep one signer centered, show both hands and upper body when needed, and match the last visible handshape to the target dots with a small tolerance.</p>
-                        <button id="retry-camera-btn" type="button" class="secondary gesture-retry-btn">Retry Camera</button>
-                    </div>
-
-                    <div class="gesture-diagnostics-card">
-                        <div class="gesture-diagnostics-header">
-                            <div>
-                                <div class="gesture-label">Diagnostics</div>
-                                <h3>Camera Access Check</h3>
-                            </div>
-                            <button id="refresh-diagnostics-btn" type="button" class="secondary">Refresh</button>
-                        </div>
-                        <div id="diagnostics-summary" class="gesture-diagnostics-summary">Checking camera environment...</div>
-                        <div id="diagnostics-list" class="gesture-diagnostics-list"></div>
-                    </div>
-                </section>
+            <div class="panel-actions">
+              <button class="action-btn btn-voice" type="button" onclick="window.speakTarget()">Hear Sign</button>
+              <button class="action-btn btn-skip" type="button" onclick="window.skipSign()">Skip Sign</button>
             </div>
+          </div>
+        </aside>
+
+        <section class="dashboard-panel">
+          <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <h3>Live Camera</h3>
+            <span
+              id="camera-status-tag"
+              style="background: var(--accent-success); color: white; padding: 0.2rem 0.8rem; border-radius: 10px; font-size: 0.8rem;"
+            >
+              Idle
+            </span>
+          </div>
+          <div class="camera-display">
+            <video id="webcam" autoplay playsinline></video>
+            <canvas id="output-canvas" class="mediapipe-overlay"></canvas>
+          </div>
+          <button
+            class="action-btn"
+            style="margin-top: 1.5rem; background: var(--text-heading); color: white;"
+            type="button"
+            onclick="window.retryCamera()"
+          >
+            Retry Camera
+          </button>
         </section>
-    </main>
 
-    <script type="module" src="./js/gesture-trainer.js?v=20260318-10"></script>
+        <aside class="dashboard-panel">
+          <div class="panel-header">
+            <h3>Your Progress</h3>
+          </div>
+          <div class="progress-display">
+            <div class="status-indicator" id="accuracy-status">Waiting...</div>
+            <div class="vertical-bar-container">
+              <div class="bar-fill" id="accuracy-bar"></div>
+            </div>
+            <div class="percentage-badge"><span id="accuracy-text">0</span>%</div>
+            <div class="stars-success" id="success-stars">
+              Great job
+              <p style="font-size: 1rem; color: var(--accent-success); font-weight: 800;">Awesome!</p>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <div id="modal-learn" class="modal-overlay" onclick="closeLearnWindow()">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <button class="close-modal" type="button" onclick="closeLearnWindow()">X</button>
+      <h2 id="modal-word-title" style="font-size: 2.5rem; margin-bottom: 1rem;">WORD</h2>
+      <div class="video-container-modal">
+        <div id="modal-media-player" style="width: 100%; height: 100%;"></div>
+      </div>
+      <p class="sign-description" id="modal-description">Description of how to sign this word.</p>
+    </div>
+  </div>
+
+  <script type="module" src="./js/gesture-trainer.js?v=20260319-12"></script>
 </body>
 </html>

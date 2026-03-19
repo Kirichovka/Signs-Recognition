@@ -18,22 +18,6 @@ const HAND_CONNECTIONS = [
     [9, 13], [13, 14], [14, 15], [15, 16],
     [13, 17], [0, 17], [17, 18], [18, 19], [19, 20]
 ];
-
-const MODE_DEFINITIONS = {
-    letters: {
-        title: "Letters",
-        buttonLabel: "Letters",
-        emptyTitle: "No letter samples",
-        emptyCopy: "Add one-hand single-letter samples to landmarks_dataset.json to practice them here."
-    },
-    video: {
-        title: "Video",
-        buttonLabel: "Video",
-        emptyTitle: "No video samples",
-        emptyCopy: "Add saved word or sign samples like hello, thanks, yes, or no to practice them here."
-    }
-};
-
 const LABEL_DESCRIPTIONS = {
     A: "Show the closed fist with the thumb resting along the side or front of the fist.",
     B: "Show the flat open hand with four straight fingers up and the thumb folded across the palm.",
@@ -44,22 +28,13 @@ const LABEL_DESCRIPTIONS = {
     G: "Show index and thumb pointing sideways in parallel, like a small horizontal pinch.",
     H: "Show index and middle extended together to the side while the other fingers fold.",
     I: "Show only the pinky extended while the other fingers stay curled.",
-    J: "Show the J hand, starting like I and curving the pinky in a J motion.",
-    K: "Show index and middle up in a V shape with the thumb supporting the middle finger.",
-    L: "Show the L hand with thumb and index open at a right angle.",
-    hello: "Raise one open hand near the side of the head and hold the hello shape clearly.",
-    thanks: "Bring the hand near the mouth area in the saved thanks pose and hold it steady.",
-    yes: "Show the saved yes handshape and keep the hand clear in frame.",
-    no: "Show the saved no handshape and keep the fingertips visible to the camera."
+    J: "Show the J hand, starting like I and curving the pinky in a J motion."
 };
 
 const targetLetter = document.getElementById("target-letter");
 const taskStep = document.getElementById("task-step");
 const taskCopy = document.getElementById("task-copy");
-const modeBadge = document.getElementById("mode-badge");
 const datasetBadge = document.getElementById("dataset-badge");
-const modeLettersBtn = document.getElementById("mode-letters-btn");
-const modeVideoBtn = document.getElementById("mode-video-btn");
 const prevTaskBtn = document.getElementById("prev-task-btn");
 const nextTaskBtn = document.getElementById("next-task-btn");
 const randomTaskBtn = document.getElementById("random-task-btn");
@@ -89,14 +64,9 @@ let trackedHands = 0;
 let lastCameraError = "";
 let permissionState = "prompt";
 let datasetState = null;
-let currentMode = "letters";
 let currentTaskIndex = 0;
 let latestPrediction = null;
 let holdStartedAt = 0;
-
-function isLetterLabel(label) {
-    return /^[A-Z]$/.test(String(label || "").trim());
-}
 
 function sortLandmarks(landmarks) {
     const sorted = Array.from(landmarks || []).sort((left, right) => left.id - right.id);
@@ -151,23 +121,6 @@ function vectorDistance(leftVector, rightVector) {
     return total / pointCount;
 }
 
-function buildModeState(samples, filterFn) {
-    const modeSamples = samples.filter(sample => filterFn(sample.label));
-    const labelCounts = new Map();
-
-    modeSamples.forEach(sample => {
-        labelCounts.set(sample.label, (labelCounts.get(sample.label) || 0) + 1);
-    });
-
-    return {
-        sampleCount: modeSamples.length,
-        labelCount: labelCounts.size,
-        labelCounts,
-        labels: [...labelCounts.keys()].sort((left, right) => left.localeCompare(right)),
-        samples: modeSamples
-    };
-}
-
 function buildDatasetState(dataset) {
     const normalizedSamples = [];
     const labelCounts = new Map();
@@ -188,124 +141,49 @@ function buildDatasetState(dataset) {
             continue;
         }
 
-        const label = String(sample.label || "unknown").trim();
         normalizedSamples.push({
             id: sample.id,
-            label,
+            label: sample.label || "unknown",
             handedness: primaryHand.handedness || "Unknown",
             handednessScore: primaryHand.score || 0,
             vector: flattenLandmarks(normalized)
         });
-        labelCounts.set(label, (labelCounts.get(label) || 0) + 1);
+        labelCounts.set(sample.label, (labelCounts.get(sample.label) || 0) + 1);
     }
 
+    const labels = [...labelCounts.keys()].sort((left, right) => left.localeCompare(right));
     return {
         sampleCount: normalizedSamples.length,
         labelCount: labelCounts.size,
         labelCounts,
-        labels: [...labelCounts.keys()].sort((left, right) => left.localeCompare(right)),
-        samples: normalizedSamples,
-        modes: {
-            letters: buildModeState(normalizedSamples, isLetterLabel),
-            video: buildModeState(normalizedSamples, label => !isLetterLabel(label))
-        }
+        labels,
+        samples: normalizedSamples
     };
 }
 
-function getModeState(modeKey = currentMode) {
-    return datasetState?.modes?.[modeKey] || null;
-}
-
 function currentTargetLabel() {
-    return getModeState()?.labels?.[currentTaskIndex] || "";
-}
-
-function formatModeTask(label) {
-    return currentMode === "letters" ? `Show letter ${label}` : `Show ${label}`;
-}
-
-function taskDescription(label) {
-    return LABEL_DESCRIPTIONS[label] || (currentMode === "letters"
-        ? `Show the saved handshape for ${label}.`
-        : `Show the saved sign for ${label}.`);
-}
-
-function syncModeButtons() {
-    const lettersState = getModeState("letters");
-    const videoState = getModeState("video");
-
-    modeLettersBtn.classList.toggle("is-active", currentMode === "letters");
-    modeVideoBtn.classList.toggle("is-active", currentMode === "video");
-    modeLettersBtn.disabled = !lettersState?.sampleCount;
-    modeVideoBtn.disabled = !videoState?.sampleCount;
-}
-
-function syncTaskButtons(modeState) {
-    const hasTasks = Boolean(modeState?.labels?.length);
-    const hasManyTasks = (modeState?.labels?.length || 0) > 1;
-    prevTaskBtn.disabled = !hasTasks;
-    nextTaskBtn.disabled = !hasTasks;
-    randomTaskBtn.disabled = !hasManyTasks;
-}
-
-function renderPlaceholderMatches(title = "Waiting", value = "Waiting") {
-    topMatches.innerHTML = "";
-    [
-        [title, value],
-        ["Top match 2", "Waiting"],
-        ["Top match 3", "Waiting"]
-    ].forEach(([label, badge]) => {
-        const row = document.createElement("div");
-        row.className = "gesture-check-row";
-        row.innerHTML = `<span>${label}</span><span class="gesture-check-badge is-neutral">${badge}</span>`;
-        topMatches.appendChild(row);
-    });
+    return datasetState?.labels?.[currentTaskIndex] || "";
 }
 
 function renderTask() {
-    const modeState = getModeState();
-    const modeInfo = MODE_DEFINITIONS[currentMode];
-
-    modeBadge.textContent = modeInfo.title;
-    datasetBadge.textContent = modeState
-        ? `${modeState.sampleCount} samples / ${modeState.labelCount} labels`
-        : "Loading dataset";
-
-    if (!modeState?.labels?.length) {
-        targetLetter.textContent = modeInfo.emptyTitle;
-        taskStep.textContent = "0 / 0";
-        taskCopy.textContent = modeInfo.emptyCopy;
-        syncTaskButtons(modeState);
-        return;
-    }
-
     const target = currentTargetLabel();
-    targetLetter.textContent = formatModeTask(target);
-    taskStep.textContent = `${currentTaskIndex + 1} / ${modeState.labels.length}`;
-    taskCopy.textContent = taskDescription(target);
-    syncTaskButtons(modeState);
-}
-
-function setMode(nextMode) {
-    if (!MODE_DEFINITIONS[nextMode]) {
+    if (!target) {
+        targetLetter.textContent = "Waiting";
+        taskStep.textContent = "0 / 0";
+        taskCopy.textContent = "Waiting for dataset labels.";
         return;
     }
-    currentMode = nextMode;
-    currentTaskIndex = 0;
-    holdStartedAt = 0;
-    latestPrediction = null;
-    syncModeButtons();
-    renderTask();
-    renderPrediction(null);
-    renderDiagnostics(null);
+
+    targetLetter.textContent = `Show ${target}`;
+    taskStep.textContent = `${currentTaskIndex + 1} / ${datasetState.labels.length}`;
+    taskCopy.textContent = LABEL_DESCRIPTIONS[target] || `Show the sign for ${target}.`;
 }
 
 function moveTask(delta) {
-    const modeState = getModeState();
-    if (!modeState?.labels?.length) {
+    if (!datasetState?.labels?.length) {
         return;
     }
-    currentTaskIndex = (currentTaskIndex + delta + modeState.labels.length) % modeState.labels.length;
+    currentTaskIndex = (currentTaskIndex + delta + datasetState.labels.length) % datasetState.labels.length;
     holdStartedAt = 0;
     renderTask();
     renderPrediction(latestPrediction);
@@ -313,16 +191,15 @@ function moveTask(delta) {
 }
 
 function randomTask() {
-    const modeState = getModeState();
-    if (!modeState?.labels?.length) {
+    if (!datasetState?.labels?.length) {
         return;
     }
-    if (modeState.labels.length === 1) {
+    if (datasetState.labels.length === 1) {
         currentTaskIndex = 0;
     } else {
         let nextIndex = currentTaskIndex;
         while (nextIndex === currentTaskIndex) {
-            nextIndex = Math.floor(Math.random() * modeState.labels.length);
+            nextIndex = Math.floor(Math.random() * datasetState.labels.length);
         }
         currentTaskIndex = nextIndex;
     }
@@ -362,11 +239,6 @@ function classifyCurrentHand(results) {
         return { handsVisible, prediction: null, primaryHand: null };
     }
 
-    const modeState = getModeState();
-    if (!modeState?.samples?.length) {
-        return { handsVisible, prediction: null, primaryHand: primary.landmarks };
-    }
-
     const normalized = normalizeLandmarks(primary.landmarks);
     if (!normalized) {
         return { handsVisible, prediction: null, primaryHand: primary.landmarks };
@@ -375,7 +247,7 @@ function classifyCurrentHand(results) {
     const queryVector = flattenLandmarks(normalized);
     const queryMirrored = mirrorVector(queryVector);
 
-    const distances = modeState.samples.map(sample => {
+    const distances = datasetState.samples.map(sample => {
         const distance = Math.min(
             vectorDistance(queryVector, sample.vector),
             vectorDistance(queryMirrored, sample.vector)
@@ -433,39 +305,34 @@ function classifyCurrentHand(results) {
 }
 
 function renderPrediction(prediction) {
-    const modeState = getModeState();
     const target = currentTargetLabel();
-
-    if (!modeState?.labels?.length) {
-        confidenceScore.textContent = "0%";
-        similarityScore.textContent = "0%";
-        classifierStatus.textContent = MODE_DEFINITIONS[currentMode].emptyCopy;
-        predictionSummary.textContent = "Predicted label: no active dataset mode.";
-        statusBadge.textContent = "Empty";
-        statusBadge.className = "gesture-check-badge is-neutral";
-        holdProgressBar.style.width = "0%";
-        holdProgressValue.textContent = "0%";
-        renderPlaceholderMatches("Top match 1", "No samples");
-        return;
-    }
-
     if (!prediction || !target) {
         confidenceScore.textContent = "0%";
         similarityScore.textContent = "0%";
-        classifierStatus.textContent = `${formatModeTask(target)} to start the check.`;
+        classifierStatus.textContent = target ? `Show ${target} to start the check.` : "Waiting for a hand in the frame.";
         predictionSummary.textContent = "Predicted label: waiting.";
         statusBadge.textContent = "Idle";
         statusBadge.className = "gesture-check-badge is-neutral";
         holdProgressBar.style.width = "0%";
         holdProgressValue.textContent = "0%";
-        renderPlaceholderMatches();
+        topMatches.innerHTML = "";
+
+        [
+            ["Top match 1", "Waiting"],
+            ["Top match 2", "Waiting"],
+            ["Top match 3", "Waiting"]
+        ].forEach(([label, value]) => {
+            const row = document.createElement("div");
+            row.className = "gesture-check-row";
+            row.innerHTML = `<span>${label}</span><span class="gesture-check-badge is-neutral">${value}</span>`;
+            topMatches.appendChild(row);
+        });
         return;
     }
 
     const confidencePercent = Math.round(prediction.confidence * 100);
     const similarityPercent = Math.round(prediction.similarity * 100);
     const matchesTarget = prediction.predictedLabel === target;
-
     confidenceScore.textContent = `${matchesTarget ? confidencePercent : 0}%`;
     similarityScore.textContent = `${matchesTarget ? similarityPercent : 0}%`;
     predictionSummary.textContent = `Predicted label: ${prediction.predictedLabel}.`;
@@ -484,7 +351,7 @@ function renderPrediction(prediction) {
         holdStartedAt = 0;
         classifierStatus.textContent = matchesTarget
             ? `This looks like ${target}, but confidence is still low.`
-            : `Current guess is ${prediction.predictedLabel}. ${formatModeTask(target)}.`;
+            : `Current guess is ${prediction.predictedLabel}. Show ${target}.`;
     }
 
     holdProgressBar.style.width = `${Math.round(holdProgress * 100)}%`;
@@ -513,35 +380,25 @@ function renderPrediction(prediction) {
 
 function renderDiagnostics(prediction) {
     diagnosticsList.innerHTML = "";
-    const modeInfo = MODE_DEFINITIONS[currentMode];
-    const modeState = getModeState();
     const target = currentTargetLabel();
 
     const rows = [
         {
-            label: "Mode",
-            value: modeState?.sampleCount
-                ? `${modeInfo.title} mode is active with ${modeState.sampleCount} usable samples across ${modeState.labelCount} labels.`
-                : `${modeInfo.title} mode does not have any usable samples yet.`,
-            badge: modeInfo.title,
-            tone: modeState?.sampleCount ? "is-good" : "is-neutral"
-        },
-        {
             label: "Task",
-            value: target ? `Current task: ${formatModeTask(target)}.` : "No active task is available in this mode.",
+            value: target ? `Current task: show ${target}.` : "No target label is active yet.",
             badge: target || "Waiting",
             tone: target ? "is-good" : "is-neutral"
         },
         {
             label: "Matcher",
-            value: "Primary hand by handedness score, wrist normalization, mirrored x vector, kNN over current-mode samples, weighted vote by exp(-4 * distance).",
+            value: "Primary hand by handedness score, wrist normalization, mirrored x vector, kNN over all samples, weighted vote by exp(-4 * distance).",
             badge: "JSON kNN",
             tone: "is-good"
         },
         {
             label: "Dataset",
             value: datasetState
-                ? `Loaded ${datasetState.sampleCount} samples across ${datasetState.labelCount} labels in total.`
+                ? `Loaded ${datasetState.sampleCount} samples across ${datasetState.labelCount} labels.`
                 : "Dataset is not loaded yet.",
             badge: datasetState ? "Loaded" : "Waiting",
             tone: datasetState ? "is-good" : "is-neutral"
@@ -600,10 +457,10 @@ function renderDiagnostics(prediction) {
     });
 
     diagnosticsSummary.textContent = prediction
-        ? `${modeInfo.title} task ${target}. Best guess is ${prediction.predictedLabel}; confidence and similarity come from the 5 nearest JSON samples in this mode.`
+        ? `Task ${target}. Best guess is ${prediction.predictedLabel}; confidence and similarity come from the 5 nearest JSON samples.`
         : target
-            ? `${modeInfo.title} task ${target}. Waiting for a live hand to classify.`
-            : `${modeInfo.title} mode is waiting for usable labels.`;
+            ? `Task ${target}. Waiting for a live hand to classify.`
+            : "Waiting for dataset labels.";
 }
 
 function drawHand(rawHand) {
@@ -633,11 +490,7 @@ function drawHand(rawHand) {
 
         rawHand.forEach((landmark, index) => {
             canvasCtx.beginPath();
-            canvasCtx.fillStyle = index === 0
-                ? "rgba(251, 191, 36, 0.98)"
-                : DRAW_POINT_INDICES.includes(index)
-                    ? "rgba(56, 189, 248, 0.98)"
-                    : "rgba(30, 255, 30, 0.82)";
+            canvasCtx.fillStyle = index === 0 ? "rgba(251, 191, 36, 0.98)" : DRAW_POINT_INDICES.includes(index) ? "rgba(56, 189, 248, 0.98)" : "rgba(30, 255, 30, 0.82)";
             canvasCtx.arc(landmark.x * outputCanvas.width, landmark.y * outputCanvas.height, index === 0 ? 6 : 4, 0, Math.PI * 2);
             canvasCtx.fill();
         });
@@ -651,16 +504,13 @@ async function loadDataset() {
     if (!response.ok) {
         throw new Error(`Could not load landmarks_dataset.json (${response.status}).`);
     }
-
     const dataset = await response.json();
     datasetState = buildDatasetState(dataset);
     if (!datasetState.sampleCount) {
         throw new Error("The dataset did not contain any usable hand samples.");
     }
-
-    currentMode = getModeState("letters")?.sampleCount ? "letters" : "video";
+    datasetBadge.textContent = `${datasetState.sampleCount} samples`;
     currentTaskIndex = 0;
-    syncModeButtons();
     renderTask();
 }
 
@@ -738,8 +588,6 @@ async function startCamera() {
     }
 }
 
-modeLettersBtn.addEventListener("click", () => setMode("letters"));
-modeVideoBtn.addEventListener("click", () => setMode("video"));
 prevTaskBtn.addEventListener("click", () => moveTask(-1));
 nextTaskBtn.addEventListener("click", () => moveTask(1));
 randomTaskBtn.addEventListener("click", randomTask);
@@ -747,7 +595,6 @@ retryCameraBtn.addEventListener("click", () => startCamera().catch(console.error
 refreshDiagnosticsBtn.addEventListener("click", () => refreshPermissionState().catch(console.error));
 window.addEventListener("beforeunload", () => stopLoop());
 
-syncModeButtons();
 renderTask();
 renderPrediction(null);
 renderDiagnostics(null);
