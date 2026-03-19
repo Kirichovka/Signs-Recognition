@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ASL JSON kNN Classifier</title>
+    <title>ASL JSON kNN Practice</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -13,8 +13,8 @@
         <section class="gesture-shell">
             <div class="gesture-hero">
                 <div class="theme-kicker">ASL Landmark kNN</div>
-                <h1>JSON Hand Classifier</h1>
-                <p>This page classifies the current hand against all saved samples from <code>landmarks_dataset.json</code>. It mirrors the hand, finds the 5 nearest neighbors, votes by <code>exp(-4 * distance)</code>, and shows the winning label with confidence, similarity, and top matches.</p>
+                <h1>JSON Letter Practice</h1>
+                <p>The page gives you a task like “show letter A”, then checks the live hand against all saved samples from <code>landmarks_dataset.json</code>. The prediction still uses the exact kNN flow with mirrored matching, weighted votes, confidence, similarity, and top matches.</p>
                 <div class="gesture-link-row">
                     <a class="gesture-link-btn" href="./index.html">Back To Main Trainer</a>
                 </div>
@@ -24,10 +24,10 @@
                 <section class="gesture-panel gesture-target-panel">
                     <div class="gesture-target-header">
                         <div>
-                            <div class="gesture-label">Predicted Label</div>
-                            <h2 id="prediction-label">Waiting</h2>
+                            <div class="gesture-label">Current Task</div>
+                            <h2 id="target-letter">Waiting</h2>
                         </div>
-                        <div id="dataset-badge" class="gesture-step">0 samples</div>
+                        <div id="task-step" class="gesture-step">0 / 0</div>
                     </div>
 
                     <div class="gesture-hand-card">
@@ -44,9 +44,15 @@
                             </svg>
                         </div>
                         <div class="gesture-hand-copy">
-                            <div class="gesture-label">Prediction Summary</div>
-                            <p id="prediction-copy">Show one clear hand to the camera and the classifier will compare it against every saved JSON sample.</p>
+                            <div class="gesture-label">Task Prompt</div>
+                            <p id="task-copy">Show one clear hand to the camera and the page will ask for a letter from the JSON dataset.</p>
                         </div>
+                    </div>
+
+                    <div class="gesture-controls">
+                        <button id="prev-task-btn" type="button" class="secondary">Previous</button>
+                        <button id="next-task-btn" type="button">Next</button>
+                        <button id="random-task-btn" type="button" class="secondary">Random</button>
                     </div>
 
                     <div class="gesture-guide-card">
@@ -69,17 +75,27 @@
                             <div class="gesture-guide-step"><div class="gesture-guide-step-index">1</div><div class="gesture-guide-step-copy">Pick the live hand with the best handedness score.</div></div>
                             <div class="gesture-guide-step"><div class="gesture-guide-step-index">2</div><div class="gesture-guide-step-copy">Normalize all 21 landmarks relative to the wrist and maximum 2D spread.</div></div>
                             <div class="gesture-guide-step"><div class="gesture-guide-step-index">3</div><div class="gesture-guide-step-copy">Compare both the normal and mirrored live hand to every saved sample.</div></div>
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">4</div><div class="gesture-guide-step-copy">Take the 5 nearest neighbors and vote by <code>exp(-4 * distance)</code>.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">4</div><div class="gesture-guide-step-copy">Take the 5 nearest neighbors, vote by <code>exp(-4 * distance)</code>, and check whether the winning label matches the task.</div></div>
+                        </div>
+                    </div>
+
+                    <div class="gesture-progress-card">
+                        <div class="gesture-progress-header">
+                            <span>Hold Progress</span>
+                            <span id="hold-progress-value">0%</span>
+                        </div>
+                        <div class="gesture-progress-track" aria-hidden="true">
+                            <div id="hold-progress-bar" class="gesture-progress-bar"></div>
                         </div>
                     </div>
 
                     <div class="gesture-score-grid">
                         <article class="gesture-score-card">
-                            <div class="gesture-label">Confidence</div>
+                            <div class="gesture-label">Target Confidence</div>
                             <div id="confidence-score" class="gesture-score">0%</div>
                         </article>
                         <article class="gesture-score-card">
-                            <div class="gesture-label">Similarity</div>
+                            <div class="gesture-label">Target Similarity</div>
                             <div id="similarity-score" class="gesture-score">0%</div>
                         </article>
                     </div>
@@ -87,12 +103,13 @@
                     <div class="gesture-calibration-card">
                         <div class="gesture-calibration-header">
                             <div>
-                                <div class="gesture-label">Classifier Status</div>
-                                <h3>Live Result</h3>
+                                <div class="gesture-label">Recognition Status</div>
+                                <h3>Task Feedback</h3>
                             </div>
                             <div id="status-badge" class="gesture-check-badge is-neutral">Idle</div>
                         </div>
                         <p id="classifier-status" class="gesture-calibration-status">Waiting for a hand in the frame.</p>
+                        <div id="prediction-summary" class="gesture-diagnostics-summary">Predicted label: waiting.</div>
                     </div>
 
                     <div class="gesture-checklist-card">
@@ -125,7 +142,7 @@
                         <div class="gesture-diagnostics-header">
                             <div>
                                 <div class="gesture-label">Diagnostics</div>
-                                <h3>Classifier State</h3>
+                                <h3>Practice Diagnostics</h3>
                             </div>
                             <button id="refresh-diagnostics-btn" type="button" class="secondary">Refresh</button>
                         </div>
@@ -137,6 +154,6 @@
         </section>
     </main>
 
-    <script type="module" src="./js/alphabet-a-test.js?v=20260319-8"></script>
+    <script type="module" src="./js/alphabet-a-test.js?v=20260319-9"></script>
 </body>
 </html>

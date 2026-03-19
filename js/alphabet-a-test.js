@@ -8,6 +8,8 @@ import {
 const DATASET_URL = "./datasets/landmarks_dataset.json?v=20260319-4";
 const K_NEIGHBORS = 5;
 const Z_WEIGHT = 0.35;
+const SCORE_THRESHOLD = 0.55;
+const HOLD_SECONDS = 1.0;
 const DRAW_POINT_INDICES = [0, 4, 8, 12, 20];
 const HAND_CONNECTIONS = [
     [0, 1], [1, 2], [2, 3], [3, 4],
@@ -17,25 +19,32 @@ const HAND_CONNECTIONS = [
     [13, 17], [0, 17], [17, 18], [18, 19], [19, 20]
 ];
 const LABEL_DESCRIPTIONS = {
-    A: "Closed fist with the thumb resting along the side or front of the fist.",
-    B: "Flat open hand with four straight fingers up and the thumb folded across the palm.",
-    C: "Curved hand with a visible open C-shape between thumb and fingers.",
-    D: "Index finger up, thumb touching the middle finger, other fingers folded.",
-    E: "All fingertips curled tightly toward the thumb in a compact fist.",
-    F: "Thumb and index touch to form a ring while the other fingers stay up.",
-    G: "Index and thumb point sideways in parallel, like a small horizontal pinch.",
-    H: "Index and middle extend together to the side while the other fingers fold.",
-    I: "Only the pinky extends while the other fingers stay curled.",
-    J: "Start from I and sweep the pinky in a J motion."
+    A: "Show the closed fist with the thumb resting along the side or front of the fist.",
+    B: "Show the flat open hand with four straight fingers up and the thumb folded across the palm.",
+    C: "Show the curved hand with a visible open C-shape between thumb and fingers.",
+    D: "Show the index finger up, thumb touching the middle finger, other fingers folded.",
+    E: "Show all fingertips curled tightly toward the thumb in a compact fist.",
+    F: "Show the thumb and index touching to form a ring while the other fingers stay up.",
+    G: "Show index and thumb pointing sideways in parallel, like a small horizontal pinch.",
+    H: "Show index and middle extended together to the side while the other fingers fold.",
+    I: "Show only the pinky extended while the other fingers stay curled.",
+    J: "Show the J hand, starting like I and curving the pinky in a J motion."
 };
 
-const predictionLabel = document.getElementById("prediction-label");
-const predictionCopy = document.getElementById("prediction-copy");
+const targetLetter = document.getElementById("target-letter");
+const taskStep = document.getElementById("task-step");
+const taskCopy = document.getElementById("task-copy");
 const datasetBadge = document.getElementById("dataset-badge");
+const prevTaskBtn = document.getElementById("prev-task-btn");
+const nextTaskBtn = document.getElementById("next-task-btn");
+const randomTaskBtn = document.getElementById("random-task-btn");
 const confidenceScore = document.getElementById("confidence-score");
 const similarityScore = document.getElementById("similarity-score");
+const holdProgressBar = document.getElementById("hold-progress-bar");
+const holdProgressValue = document.getElementById("hold-progress-value");
 const classifierStatus = document.getElementById("classifier-status");
 const statusBadge = document.getElementById("status-badge");
+const predictionSummary = document.getElementById("prediction-summary");
 const topMatches = document.getElementById("top-matches");
 const cameraState = document.getElementById("camera-state");
 const retryCameraBtn = document.getElementById("retry-camera-btn");
@@ -55,11 +64,9 @@ let trackedHands = 0;
 let lastCameraError = "";
 let permissionState = "prompt";
 let datasetState = null;
+let currentTaskIndex = 0;
 let latestPrediction = null;
-
-function clamp01(value) {
-    return Math.max(0, Math.min(1, value));
-}
+let holdStartedAt = 0;
 
 function sortLandmarks(landmarks) {
     const sorted = Array.from(landmarks || []).sort((left, right) => left.id - right.id);
@@ -144,12 +151,62 @@ function buildDatasetState(dataset) {
         labelCounts.set(sample.label, (labelCounts.get(sample.label) || 0) + 1);
     }
 
+    const labels = [...labelCounts.keys()].sort((left, right) => left.localeCompare(right));
     return {
         sampleCount: normalizedSamples.length,
         labelCount: labelCounts.size,
         labelCounts,
+        labels,
         samples: normalizedSamples
     };
+}
+
+function currentTargetLabel() {
+    return datasetState?.labels?.[currentTaskIndex] || "";
+}
+
+function renderTask() {
+    const target = currentTargetLabel();
+    if (!target) {
+        targetLetter.textContent = "Waiting";
+        taskStep.textContent = "0 / 0";
+        taskCopy.textContent = "Waiting for dataset labels.";
+        return;
+    }
+
+    targetLetter.textContent = `Show ${target}`;
+    taskStep.textContent = `${currentTaskIndex + 1} / ${datasetState.labels.length}`;
+    taskCopy.textContent = LABEL_DESCRIPTIONS[target] || `Show the sign for ${target}.`;
+}
+
+function moveTask(delta) {
+    if (!datasetState?.labels?.length) {
+        return;
+    }
+    currentTaskIndex = (currentTaskIndex + delta + datasetState.labels.length) % datasetState.labels.length;
+    holdStartedAt = 0;
+    renderTask();
+    renderPrediction(latestPrediction);
+    renderDiagnostics(latestPrediction);
+}
+
+function randomTask() {
+    if (!datasetState?.labels?.length) {
+        return;
+    }
+    if (datasetState.labels.length === 1) {
+        currentTaskIndex = 0;
+    } else {
+        let nextIndex = currentTaskIndex;
+        while (nextIndex === currentTaskIndex) {
+            nextIndex = Math.floor(Math.random() * datasetState.labels.length);
+        }
+        currentTaskIndex = nextIndex;
+    }
+    holdStartedAt = 0;
+    renderTask();
+    renderPrediction(latestPrediction);
+    renderDiagnostics(latestPrediction);
 }
 
 function getPrimaryLiveHand(results) {
@@ -248,14 +305,16 @@ function classifyCurrentHand(results) {
 }
 
 function renderPrediction(prediction) {
-    if (!prediction) {
-        predictionLabel.textContent = "Waiting";
-        predictionCopy.textContent = "Show one clear hand to the camera and the classifier will compare it against all saved JSON samples.";
+    const target = currentTargetLabel();
+    if (!prediction || !target) {
         confidenceScore.textContent = "0%";
         similarityScore.textContent = "0%";
-        classifierStatus.textContent = "Waiting for a hand in the frame.";
+        classifierStatus.textContent = target ? `Show ${target} to start the check.` : "Waiting for a hand in the frame.";
+        predictionSummary.textContent = "Predicted label: waiting.";
         statusBadge.textContent = "Idle";
         statusBadge.className = "gesture-check-badge is-neutral";
+        holdProgressBar.style.width = "0%";
+        holdProgressValue.textContent = "0%";
         topMatches.innerHTML = "";
 
         [
@@ -273,27 +332,63 @@ function renderPrediction(prediction) {
 
     const confidencePercent = Math.round(prediction.confidence * 100);
     const similarityPercent = Math.round(prediction.similarity * 100);
-    predictionLabel.textContent = prediction.predictedLabel;
-    predictionCopy.textContent = LABEL_DESCRIPTIONS[prediction.predictedLabel] || `Predicted as ${prediction.predictedLabel}.`;
-    confidenceScore.textContent = `${confidencePercent}%`;
-    similarityScore.textContent = `${similarityPercent}%`;
-    classifierStatus.textContent = `Best label ${prediction.predictedLabel} with confidence ${confidencePercent}% and similarity ${similarityPercent}%.`;
-    statusBadge.textContent = confidencePercent >= 70 ? "Strong" : confidencePercent >= 40 ? "Maybe" : "Weak";
-    statusBadge.className = `gesture-check-badge ${confidencePercent >= 70 ? "is-good" : confidencePercent >= 40 ? "is-neutral" : "is-bad"}`;
+    const matchesTarget = prediction.predictedLabel === target;
+    confidenceScore.textContent = `${matchesTarget ? confidencePercent : 0}%`;
+    similarityScore.textContent = `${matchesTarget ? similarityPercent : 0}%`;
+    predictionSummary.textContent = `Predicted label: ${prediction.predictedLabel}.`;
+
+    let holdProgress = 0;
+    if (matchesTarget && prediction.confidence >= SCORE_THRESHOLD) {
+        if (!holdStartedAt) {
+            holdStartedAt = performance.now();
+        }
+        const elapsed = (performance.now() - holdStartedAt) / 1000;
+        holdProgress = Math.min(1, elapsed / HOLD_SECONDS);
+        classifierStatus.textContent = elapsed >= HOLD_SECONDS
+            ? `Correct: ${target}.`
+            : `Good ${target}. Keep holding.`;
+    } else {
+        holdStartedAt = 0;
+        classifierStatus.textContent = matchesTarget
+            ? `This looks like ${target}, but confidence is still low.`
+            : `Current guess is ${prediction.predictedLabel}. Show ${target}.`;
+    }
+
+    holdProgressBar.style.width = `${Math.round(holdProgress * 100)}%`;
+    holdProgressValue.textContent = `${Math.round(holdProgress * 100)}%`;
+
+    if (matchesTarget && prediction.confidence >= 0.7) {
+        statusBadge.textContent = "Strong";
+        statusBadge.className = "gesture-check-badge is-good";
+    } else if (matchesTarget) {
+        statusBadge.textContent = "Maybe";
+        statusBadge.className = "gesture-check-badge is-neutral";
+    } else {
+        statusBadge.textContent = "Wrong";
+        statusBadge.className = "gesture-check-badge is-bad";
+    }
 
     topMatches.innerHTML = "";
     prediction.topMatches.forEach((match, index) => {
         const row = document.createElement("div");
         row.className = "gesture-check-row";
-        row.innerHTML = `<span>${index + 1}. ${match.label}</span><span class="gesture-check-badge ${index === 0 ? "is-good" : "is-neutral"}">vote ${match.vote.toFixed(3)} · d=${match.bestDistance.toFixed(3)}</span>`;
+        const tone = match.label === target ? "is-good" : index === 0 ? "is-neutral" : "is-neutral";
+        row.innerHTML = `<span>${index + 1}. ${match.label}</span><span class="gesture-check-badge ${tone}">vote ${match.vote.toFixed(3)} - d=${match.bestDistance.toFixed(3)}</span>`;
         topMatches.appendChild(row);
     });
 }
 
 function renderDiagnostics(prediction) {
     diagnosticsList.innerHTML = "";
+    const target = currentTargetLabel();
 
     const rows = [
+        {
+            label: "Task",
+            value: target ? `Current task: show ${target}.` : "No target label is active yet.",
+            badge: target || "Waiting",
+            tone: target ? "is-good" : "is-neutral"
+        },
         {
             label: "Matcher",
             value: "Primary hand by handedness score, wrist normalization, mirrored x vector, kNN over all samples, weighted vote by exp(-4 * distance).",
@@ -337,10 +432,10 @@ function renderDiagnostics(prediction) {
                 tone: "is-good"
             },
             {
-                label: "Winning label",
+                label: "Best guess",
                 value: `${prediction.predictedLabel}, best distance ${prediction.bestDistance.toFixed(3)}, similarity ${Math.round(prediction.similarity * 100)}%.`,
                 badge: prediction.predictedLabel,
-                tone: prediction.confidence >= 0.7 ? "is-good" : prediction.confidence >= 0.4 ? "is-neutral" : "is-bad"
+                tone: prediction.predictedLabel === target ? "is-good" : "is-bad"
             }
         );
     }
@@ -362,8 +457,10 @@ function renderDiagnostics(prediction) {
     });
 
     diagnosticsSummary.textContent = prediction
-        ? `Best label ${prediction.predictedLabel}. Confidence and similarity are computed from the 5 nearest JSON samples.`
-        : "Waiting for a live hand to classify against the JSON dataset.";
+        ? `Task ${target}. Best guess is ${prediction.predictedLabel}; confidence and similarity come from the 5 nearest JSON samples.`
+        : target
+            ? `Task ${target}. Waiting for a live hand to classify.`
+            : "Waiting for dataset labels.";
 }
 
 function drawHand(rawHand) {
@@ -413,6 +510,8 @@ async function loadDataset() {
         throw new Error("The dataset did not contain any usable hand samples.");
     }
     datasetBadge.textContent = `${datasetState.sampleCount} samples`;
+    currentTaskIndex = 0;
+    renderTask();
 }
 
 async function refreshPermissionState() {
@@ -489,10 +588,14 @@ async function startCamera() {
     }
 }
 
+prevTaskBtn.addEventListener("click", () => moveTask(-1));
+nextTaskBtn.addEventListener("click", () => moveTask(1));
+randomTaskBtn.addEventListener("click", randomTask);
 retryCameraBtn.addEventListener("click", () => startCamera().catch(console.error));
 refreshDiagnosticsBtn.addEventListener("click", () => refreshPermissionState().catch(console.error));
 window.addEventListener("beforeunload", () => stopLoop());
 
+renderTask();
 renderPrediction(null);
 renderDiagnostics(null);
 
