@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ASL JSON kNN Practice</title>
+    <title>ASL JSON kNN Gesture Practice</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -13,8 +13,12 @@
         <section class="gesture-shell">
             <div class="gesture-hero">
                 <div class="theme-kicker">ASL Landmark kNN</div>
-                <h1>JSON Letter Practice</h1>
-                <p>The page gives you a task like “show letter A”, then checks the live hand against all saved samples from <code>landmarks_dataset.json</code>. The prediction still uses the exact kNN flow with mirrored matching, weighted votes, confidence, similarity, and top matches.</p>
+                <h1>JSON Gesture Practice</h1>
+                <p>The page gives you a task like "show letter A" or "show hello", then checks the live hand against saved samples from <code>landmarks_dataset.json</code> with the same kNN matcher: primary hand by handedness score, wrist-centered normalization, mirrored comparison, weighted votes, confidence, similarity, and top matches.</p>
+                <div class="gesture-mode-switch" role="group" aria-label="Dataset practice mode">
+                    <button id="mode-letters-btn" type="button" class="gesture-mode-btn is-active">Letters</button>
+                    <button id="mode-video-btn" type="button" class="gesture-mode-btn">Video</button>
+                </div>
                 <div class="gesture-link-row">
                     <a class="gesture-link-btn" href="./index.html">Back To Main Trainer</a>
                 </div>
@@ -27,7 +31,10 @@
                             <div class="gesture-label">Current Task</div>
                             <h2 id="target-letter">Waiting</h2>
                         </div>
-                        <div id="task-step" class="gesture-step">0 / 0</div>
+                        <div class="gesture-header-badges">
+                            <div id="mode-badge" class="gesture-camera-state">Letters</div>
+                            <div id="task-step" class="gesture-step">0 / 0</div>
+                        </div>
                     </div>
 
                     <div class="gesture-hand-card">
@@ -45,7 +52,7 @@
                         </div>
                         <div class="gesture-hand-copy">
                             <div class="gesture-label">Task Prompt</div>
-                            <p id="task-copy">Show one clear hand to the camera and the page will ask for a letter from the JSON dataset.</p>
+                            <p id="task-copy">Show one clear hand to the camera and the page will ask for a saved JSON gesture.</p>
                         </div>
                     </div>
 
@@ -61,7 +68,7 @@
                                 <div class="gesture-label">Algorithm</div>
                                 <h3>Exact JSON kNN Flow</h3>
                             </div>
-                            <div class="gesture-check-badge is-neutral">No extra heuristics</div>
+                            <div id="dataset-badge" class="gesture-check-badge is-neutral">Loading dataset</div>
                         </div>
                         <p class="gesture-guide-description">The page uses the saved hand landmark samples exactly as the dataset matcher does: primary hand by handedness score, wrist-centered normalization, max 2D scale, z weighting, mirrored x version, 5 nearest neighbors, weighted voting, confidence, and similarity.</p>
                         <div class="gesture-guide-chips">
@@ -74,8 +81,8 @@
                         <div class="gesture-guide-steps">
                             <div class="gesture-guide-step"><div class="gesture-guide-step-index">1</div><div class="gesture-guide-step-copy">Pick the live hand with the best handedness score.</div></div>
                             <div class="gesture-guide-step"><div class="gesture-guide-step-index">2</div><div class="gesture-guide-step-copy">Normalize all 21 landmarks relative to the wrist and maximum 2D spread.</div></div>
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">3</div><div class="gesture-guide-step-copy">Compare both the normal and mirrored live hand to every saved sample.</div></div>
-                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">4</div><div class="gesture-guide-step-copy">Take the 5 nearest neighbors, vote by <code>exp(-4 * distance)</code>, and check whether the winning label matches the task.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">3</div><div class="gesture-guide-step-copy">Compare both the normal and mirrored live hand to every saved sample inside the current mode.</div></div>
+                            <div class="gesture-guide-step"><div class="gesture-guide-step-index">4</div><div class="gesture-guide-step-copy">Take the 5 nearest neighbors, vote by <code>exp(-4 * distance)</code>, and check whether the winning label matches the current task.</div></div>
                         </div>
                     </div>
 
@@ -154,6 +161,6 @@
         </section>
     </main>
 
-    <script type="module" src="./js/alphabet-a-test.js?v=20260319-9"></script>
+    <script type="module" src="./js/alphabet-a-test.js?v=20260319-10"></script>
 </body>
 </html>

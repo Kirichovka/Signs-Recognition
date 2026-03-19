@@ -118,6 +118,13 @@ button.secondary { background: #64748b; }
     justify-content: space-between;
     gap: 16px;
 }
+.gesture-header-badges {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+}
 .gesture-target-header h2, .gesture-camera-header h2 {
     margin: 8px 0 0;
     font-size: 30px;
